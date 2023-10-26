@@ -1,3 +1,4 @@
+import functools as ft
 from typing import Optional
 
 import equinox as eqx
@@ -158,10 +159,13 @@ class MultiheadAttention(eqx.Module):
         value = jax.vmap(self.value_projection)(x).reshape(
             seq_len, self.kv_multihead_dim, self.value_embedding_dim
         )
-
-        attn = jax.vmap(dot_product_attention, in_axes=1, out_axes=1)(
-            query, key_, value
+        T = seq_len
+        mask = jnp.tril(jnp.ones(shape=(T, T))) == 1
+        dpa = ft.partial(
+            dot_product_attention,
+            mask=mask,
         )
+        attn = jax.vmap(dpa, in_axes=1, out_axes=1)(query, key_, value)
 
         concatenation = attn.reshape(seq_len, -1)
         output = jax.vmap(self.output)(concatenation)
@@ -174,6 +178,7 @@ class Kira(eqx.Module):
 
     n_dims: int = eqx.field(static=True)
     n_embd: int = eqx.field(static=True)
+    max_seq_len: int = eqx.field(static=True)
 
     mha_attention: MultiheadAttention
 
@@ -192,6 +197,7 @@ class Kira(eqx.Module):
         super().__init__(**kwargs)
         self.n_dims = n_dims
         self.n_embd = n_embd
+        self.max_seq_len = max_seq_len
         key, *subkeys = jax.random.split(key, 5)
 
         self.input_embedding = eqx.nn.Embedding(n_dims, n_embd, key=subkeys[0])

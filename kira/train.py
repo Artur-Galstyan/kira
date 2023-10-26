@@ -9,6 +9,7 @@ from jaxtyping import Array, Int, PyTree
 from torch.utils.data import DataLoader
 
 from kira.model.model import Kira
+import sys
 
 
 def train(
@@ -17,7 +18,7 @@ def train(
     learning_rate: float,
     kira: Kira,
     early_stop: int | None = None,
-):
+) -> Kira:
     optimizer = optax.adamw(learning_rate=learning_rate)
     opt_state = optimizer.init(eqx.filter(kira, eqx.is_array_like))
 
@@ -26,11 +27,14 @@ def train(
         y = jnp.array(y)
 
         kira, opt_state, loss_value = step(kira, opt_state, x, y, optimizer)
+        if i % 100 == 0:
+            ic(i, loss_value)
         if i % 1000 == 0:
             eval_loss = evaluate(test_dataloader, kira)
             ic(i, loss_value, eval_loss)
         if early_stop is not None and i > early_stop:
             break
+    return kira
 
 
 def evaluate(
