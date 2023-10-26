@@ -6,19 +6,20 @@ from kira.train import train
 
 
 def main():
-    tinyshakespeare = get_data(batch_size=256)
+    max_seq_len = 8
+    tinyshakespeare = get_data(batch_size=256, block_size=max_seq_len)
     train_dataloader, test_dataloader = (
         tinyshakespeare.train_dataloader,
         tinyshakespeare.test_dataloader,
     )
 
-    n_dims = tinyshakespeare.vocab_size if tinyshakespeare.vocab_size else 256
-    n_embd = tinyshakespeare.vocab_size if tinyshakespeare.vocab_size else 256
+    n_dims = tinyshakespeare.vocab_size + 1 if tinyshakespeare.vocab_size else 256
+    n_embd = tinyshakespeare.vocab_size + 1 if tinyshakespeare.vocab_size else 256
     learning_rate = 1e-3
     num_heads = 8
     key = jax.random.PRNGKey(0)
 
-    kira = Kira(n_dims, n_embd, num_heads=num_heads, key=key)
+    kira = Kira(n_dims, n_embd, num_heads=num_heads, max_seq_len=max_seq_len, key=key)
 
     train(train_dataloader, test_dataloader, learning_rate, kira, early_stop=10000)
 

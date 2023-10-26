@@ -72,7 +72,7 @@ class RotaryPositionalEmbedding(eqx.Module):
         A JAX array of shape `(max_seq_len, embedding_size)`, with the rotary positional
         encoding applied to the input.
         """
-
+        assert x.ndim == 2, f"x.ndim must be 2, but {x.ndim} != 2."
         max_seq_len, embedding_size = x.shape
         assert embedding_size == self.embedding_size, (
             f"x.shape[-1] must match self.embedding_size, "

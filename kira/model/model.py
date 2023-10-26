@@ -5,6 +5,8 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 
+from kira.model.rope_embeddings import RotaryPositionalEmbedding
+
 
 class RMSNorm(eqx.Module):
     weight: Array
@@ -81,6 +83,11 @@ class MultiheadAttention(eqx.Module):
 
     output: eqx.nn.Linear
 
+    query_rope_embeddings: RotaryPositionalEmbedding
+    key_rope_embeddings: RotaryPositionalEmbedding
+
+    max_seq_len: int = eqx.field(static=True)
+
     def __init__(
         self,
         query_embedding_dim: int,
@@ -93,6 +100,7 @@ class MultiheadAttention(eqx.Module):
         output_dim: int,
         query_multihead_dim: int,
         kv_multihead_dim: int,
+        max_seq_len: int,
         key: PRNGKeyArray,
     ):
         key, qkey, kkey, vkey, okey = jax.random.split(key, 5)
@@ -116,6 +124,14 @@ class MultiheadAttention(eqx.Module):
             num_heads * value_embedding_dim, output_dim, key=okey, use_bias=False
         )
 
+        self.query_rope_embeddings = RotaryPositionalEmbedding(
+            embedding_size=query_embedding_dim, max_seq_len=max_seq_len
+        )
+
+        self.key_rope_embeddings = RotaryPositionalEmbedding(
+            embedding_size=key_embedding_dim, max_seq_len=max_seq_len
+        )
+
         # parameters
         self.query_input_dim = query_input_dim
         self.query_embedding_dim = query_embedding_dim
@@ -127,15 +143,18 @@ class MultiheadAttention(eqx.Module):
         self.output_dim = output_dim
         self.query_multihead_dim = query_multihead_dim
         self.kv_multihead_dim = kv_multihead_dim
+        self.max_seq_len = max_seq_len
 
     def __call__(self, x: Float[Array, "max_seq_len input_dim"]):
         seq_len, _ = x.shape
         query = jax.vmap(self.query_projection)(x).reshape(
             seq_len, self.num_heads, self.query_embedding_dim
         )
+        query = jax.vmap(self.query_rope_embeddings, in_axes=1, out_axes=1)(query)
         key_ = jax.vmap(self.key_projection)(x).reshape(
             seq_len, self.kv_multihead_dim, self.key_embedding_dim
         )
+        key_ = jax.vmap(self.key_rope_embeddings, in_axes=1, out_axes=1)(key_)
         value = jax.vmap(self.value_projection)(x).reshape(
             seq_len, self.kv_multihead_dim, self.value_embedding_dim
         )
@@ -160,7 +179,16 @@ class Kira(eqx.Module):
 
     output: eqx.nn.Linear
 
-    def __init__(self, n_dims: int, n_embd: int, num_heads: int, *, key, **kwargs):
+    def __init__(
+        self,
+        n_dims: int,
+        n_embd: int,
+        num_heads: int,
+        max_seq_len: int,
+        *,
+        key,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.n_dims = n_dims
         self.n_embd = n_embd
@@ -179,6 +207,7 @@ class Kira(eqx.Module):
             output_dim=n_embd,
             query_multihead_dim=num_heads,
             kv_multihead_dim=num_heads,
+            max_seq_len=max_seq_len,
             key=subkeys[1],
         )
 
