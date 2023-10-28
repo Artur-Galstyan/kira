@@ -177,6 +177,7 @@ class Block(eqx.Module):
     mha_attention: MultiheadAttention
     rms_norm: RMSNorm
     feedforward: eqx.nn.MLP
+    dropout: eqx.nn.Dropout
 
     n_embd: int = eqx.field(static=True)
     max_seq_len: int = eqx.field(static=True)
@@ -189,6 +190,7 @@ class Block(eqx.Module):
         max_seq_len: int,
         width_size: int = 32,
         depth: int = 2,
+        p: float = 0.2,
         *,
         key,
         **kwargs,
@@ -220,10 +222,15 @@ class Block(eqx.Module):
             n_embd, out_size=n_embd, width_size=width_size, depth=depth, key=subkeys[1]
         )
 
-    def __call__(self, x: Int[Array, "max_seq_len"], *, key: PRNGKeyArray, **kwargs):
+        self.dropout = eqx.nn.Dropout(p=p)
+
+    def __call__(
+        self, x: Int[Array, "max_seq_len"], *, key: Optional[PRNGKeyArray], **kwargs
+    ):
         mha = self.mha_attention(x)
         x = self.rms_norm(mha + x)
-
+        inference = True if key is None else False
+        x = self.dropout(x, key=key, inference=inference)
         ff = jax.vmap(self.feedforward)(x)
         x = self.rms_norm(ff + x)
 
@@ -271,8 +278,10 @@ class Kira(eqx.Module):
 
         self.output = eqx.nn.Linear(n_embd, n_dims, key=subkeys[-1])
 
-    def __call__(self, x: Int[Array, "max_seq_len"]):
+    def __call__(
+        self, x: Int[Array, "max_seq_len"], *, key: Optional[PRNGKeyArray], **kwargs
+    ):
         x = jax.vmap(self.input_embedding)(x)
-        x = self.blocks(x)
+        x = self.blocks(x, key=key)
         x = jax.vmap(self.output)(x)
         return x

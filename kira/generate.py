@@ -16,8 +16,8 @@ def generate_text(
     x = jnp.zeros((max_seq_len,), dtype=jnp.int32)
     key = jax.random.PRNGKey(0)
     for _ in range(max_new_tokens):
-        key, subkey = jax.random.split(key)
-        logits = jitted_kira(x)
+        key, subkey, kira_key = jax.random.split(key, 3)
+        logits = jitted_kira(x, key=kira_key)
         logits = logits[-1, :]
         probs = jax.nn.softmax(logits, axis=-1)
 

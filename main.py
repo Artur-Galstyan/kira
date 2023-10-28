@@ -19,7 +19,8 @@ def main():
     n_dims = tinyshakespeare.vocab_size if tinyshakespeare.vocab_size else 256
     n_embd = 512
     learning_rate = 3e-4
-    num_heads = 8
+    num_heads = 32
+    n_layers = 8
     max_new_tokens = 2000
     key = jax.random.PRNGKey(0)
 
@@ -29,7 +30,7 @@ def main():
         num_heads=num_heads,
         max_seq_len=max_seq_len,
         key=key,
-        n_layers=8,
+        n_layers=n_layers,
     )
     ic("Initial output")
     assert tinyshakespeare.decode is not None
@@ -38,8 +39,14 @@ def main():
         kira, max_new_tokens, tinyshakespeare.decode, tinyshakespeare.vocab_size
     )
     ic("Starting training...")
+    key, subkey = jax.random.split(key)
     kira = train(
-        train_dataloader, test_dataloader, learning_rate, kira, early_stop=5000
+        train_dataloader,
+        test_dataloader,
+        learning_rate,
+        kira,
+        early_stop=5000,
+        key=subkey,
     )
     ic("Final output")
     generate_text(
