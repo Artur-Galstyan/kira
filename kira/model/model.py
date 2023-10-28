@@ -5,6 +5,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
+from numpy import ma
 
 from kira.model.rope_embeddings import RotaryPositionalEmbedding
 
@@ -173,34 +174,31 @@ class MultiheadAttention(eqx.Module):
         return output
 
 
-class Kira(eqx.Module):
-    input_embedding: eqx.nn.Embedding
+class Block(eqx.Module):
+    mha_attention: MultiheadAttention
+    rms_norm: RMSNorm
+    feedforward: eqx.nn.MLP
 
-    n_dims: int = eqx.field(static=True)
     n_embd: int = eqx.field(static=True)
     max_seq_len: int = eqx.field(static=True)
-
-    mha_attention: MultiheadAttention
-
-    output: eqx.nn.Linear
+    num_heads: int = eqx.field(static=True)
 
     def __init__(
         self,
-        n_dims: int,
         n_embd: int,
         num_heads: int,
         max_seq_len: int,
+        width_size: int = 32,
+        depth: int = 2,
         *,
         key,
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.n_dims = n_dims
+        key, *subkeys = jax.random.split(key, 5)
         self.n_embd = n_embd
         self.max_seq_len = max_seq_len
-        key, *subkeys = jax.random.split(key, 5)
-
-        self.input_embedding = eqx.nn.Embedding(n_dims, n_embd, key=subkeys[0])
+        self.num_heads = num_heads
 
         self.mha_attention = MultiheadAttention(
             query_input_dim=n_embd,
@@ -214,13 +212,68 @@ class Kira(eqx.Module):
             query_multihead_dim=num_heads,
             kv_multihead_dim=num_heads,
             max_seq_len=max_seq_len,
-            key=subkeys[1],
+            key=subkeys[0],
         )
 
-        self.output = eqx.nn.Linear(n_embd, n_dims, key=subkeys[2])
+        self.rms_norm = RMSNorm(dim=n_embd)
+
+        self.feedforward = eqx.nn.MLP(
+            n_embd, out_size=n_embd, width_size=width_size, depth=depth, key=subkeys[1]
+        )
+
+    def __call__(self, x: Int[Array, "max_seq_len"], *, key: PRNGKeyArray, **kwargs):
+        mha = self.mha_attention(x)
+        x = self.rms_norm(mha + x)
+
+        ff = jax.vmap(self.feedforward)(x)
+        x = self.rms_norm(ff + x)
+
+        return x
+
+
+class Kira(eqx.Module):
+    input_embedding: eqx.nn.Embedding
+
+    n_dims: int = eqx.field(static=True)
+    n_embd: int = eqx.field(static=True)
+    n_layers: int = eqx.field(static=True)
+    max_seq_len: int = eqx.field(static=True)
+
+    blocks: eqx.nn.Sequential
+
+    output: eqx.nn.Linear
+
+    def __init__(
+        self,
+        n_dims: int,
+        n_embd: int,
+        num_heads: int,
+        max_seq_len: int,
+        n_layers: int = 4,
+        *,
+        key,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.n_dims = n_dims
+        self.n_embd = n_embd
+        self.max_seq_len = max_seq_len
+        self.n_layers = n_layers
+        key, *subkeys = jax.random.split(key, n_layers + 2)
+
+        self.input_embedding = eqx.nn.Embedding(n_dims, n_embd, key=subkeys[0])
+
+        self.blocks = eqx.nn.Sequential(
+            [
+                Block(n_embd, num_heads, max_seq_len, key=subkeys[i + 1])
+                for i in range(n_layers)
+            ]
+        )
+
+        self.output = eqx.nn.Linear(n_embd, n_dims, key=subkeys[-1])
 
     def __call__(self, x: Int[Array, "max_seq_len"]):
         x = jax.vmap(self.input_embedding)(x)
-        x = self.mha_attention(x)
+        x = self.blocks(x)
         x = jax.vmap(self.output)(x)
         return x

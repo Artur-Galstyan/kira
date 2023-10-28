@@ -1,10 +1,11 @@
+from typing import Callable
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from typing import Callable
-from kira.model.model import Kira
 from jaxtyping import Array
-from icecream import ic
+
+from kira.model.model import Kira
 
 
 def generate_text(
@@ -14,7 +15,7 @@ def generate_text(
     max_seq_len = kira.max_seq_len
     x = jnp.zeros((max_seq_len,), dtype=jnp.int32)
     key = jax.random.PRNGKey(0)
-    for i in range(max_new_tokens):
+    for _ in range(max_new_tokens):
         key, subkey = jax.random.split(key)
         logits = jitted_kira(x)
         logits = logits[-1, :]
@@ -30,4 +31,4 @@ def generate_text(
 
         next_token = min(next_token.item(), vobab_size - 1)
 
-        print(decode([next_token]), end="")
+        print(decode([next_token]), end="")  # type: ignore

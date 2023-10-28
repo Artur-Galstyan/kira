@@ -1,3 +1,4 @@
+import sys
 from typing import Any
 
 import equinox as eqx
@@ -9,7 +10,6 @@ from jaxtyping import Array, Int, PyTree
 from torch.utils.data import DataLoader
 
 from kira.model.model import Kira
-import sys
 
 
 def train(
@@ -42,7 +42,7 @@ def evaluate(
     kira: Kira,
 ):
     loss = 0
-    for i, (x, y) in enumerate(test_dataloader):
+    for _, (x, y) in enumerate(test_dataloader):
         x = jnp.array(x)
         y = jnp.array(y)
 

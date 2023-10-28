@@ -1,10 +1,10 @@
 import jax
+from icecream import ic
 from tinyshakespeareloader.hamlet import get_data
-from kira.generate import generate_text
 
+from kira.generate import generate_text
 from kira.model.model import Kira
 from kira.train import train
-from icecream import ic
 
 
 def main():
