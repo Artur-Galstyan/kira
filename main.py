@@ -8,9 +8,11 @@ from kira.train import train
 
 
 def main():
-    max_seq_len = 16
+    max_seq_len = 64
     batch_size = 64
-    tinyshakespeare = get_data(batch_size=batch_size, block_size=max_seq_len)
+    tinyshakespeare = get_data(
+        batch_size=batch_size, block_size=max_seq_len, shuffle=True
+    )
     train_dataloader, test_dataloader = (
         tinyshakespeare.train_dataloader,
         tinyshakespeare.test_dataloader,
