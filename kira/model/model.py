@@ -188,8 +188,8 @@ class Block(eqx.Module):
         n_embd: int,
         num_heads: int,
         max_seq_len: int,
-        width_size: int = 32,
-        depth: int = 2,
+        width_size: int = 64,
+        depth: int = 1,
         p: float = 0.2,
         *,
         key,
@@ -227,16 +227,16 @@ class Block(eqx.Module):
     def __call__(
         self, x: Int[Array, "max_seq_len"], *, key: Optional[PRNGKeyArray], **kwargs
     ):
-        mha = self.mha_attention(x)
-        x = self.rms_norm(mha + x)
+        mha = self.mha_attention(self.rms_norm(x))
+        x = mha + x
         inference = True if key is None else False
         d_key1 = None
         d_key2 = None
         if not inference and key is not None:
             key, d_key1, d_key2 = jax.random.split(key, 3)
         x = self.dropout(x, key=d_key1, inference=inference)
-        ff = jax.vmap(self.feedforward)(x)
-        x = self.rms_norm(ff + x)
+        ff = jax.vmap(self.feedforward)(self.rms_norm(x))
+        x = ff + x
         x = self.dropout(x, key=d_key2, inference=inference)
         return x
 
