@@ -8,7 +8,7 @@ from kira.train import train
 
 
 def main():
-    max_seq_len = 128
+    max_seq_len = 16
     batch_size = 256
     tinyshakespeare = get_data(batch_size=batch_size, block_size=max_seq_len)
     train_dataloader, test_dataloader = (
@@ -19,7 +19,7 @@ def main():
     n_dims = tinyshakespeare.vocab_size if tinyshakespeare.vocab_size else 256
     n_embd = 512
     learning_rate = 3e-4
-    num_heads = 16
+    num_heads = 8
     max_new_tokens = 2000
     key = jax.random.PRNGKey(0)
 

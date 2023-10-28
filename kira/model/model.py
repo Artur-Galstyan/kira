@@ -187,7 +187,7 @@ class Block(eqx.Module):
         n_embd: int,
         num_heads: int,
         max_seq_len: int,
-        width_size: int = 64,
+        width_size: int = 32,
         depth: int = 2,
         *,
         key,
