@@ -230,10 +230,14 @@ class Block(eqx.Module):
         mha = self.mha_attention(x)
         x = self.rms_norm(mha + x)
         inference = True if key is None else False
-        x = self.dropout(x, key=key, inference=inference)
+        d_key1 = None
+        d_key2 = None
+        if not inference and key is not None:
+            key, d_key1, d_key2 = jax.random.split(key, 3)
+        x = self.dropout(x, key=d_key1, inference=inference)
         ff = jax.vmap(self.feedforward)(x)
         x = self.rms_norm(ff + x)
-
+        x = self.dropout(x, key=d_key2, inference=inference)
         return x
 
 
@@ -248,6 +252,8 @@ class Kira(eqx.Module):
     blocks: eqx.nn.Sequential
 
     output: eqx.nn.Linear
+
+    rms_norm: RMSNorm
 
     def __init__(
         self,
@@ -275,7 +281,7 @@ class Kira(eqx.Module):
                 for i in range(n_layers)
             ]
         )
-
+        self.rms_norm = RMSNorm(dim=n_embd)
         self.output = eqx.nn.Linear(n_embd, n_dims, key=subkeys[-1])
 
     def __call__(
@@ -283,5 +289,6 @@ class Kira(eqx.Module):
     ):
         x = jax.vmap(self.input_embedding)(x)
         x = self.blocks(x, key=key)
+        x = self.rms_norm(x)
         x = jax.vmap(self.output)(x)
         return x
