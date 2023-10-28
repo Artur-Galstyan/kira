@@ -5,7 +5,6 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
-from numpy import ma
 
 from kira.model.rope_embeddings import RotaryPositionalEmbedding
 
@@ -188,7 +187,7 @@ class Block(eqx.Module):
         n_embd: int,
         num_heads: int,
         max_seq_len: int,
-        width_size: int = 32,
+        width_size: int = 64,
         depth: int = 2,
         *,
         key,
