@@ -147,6 +147,7 @@ class MultiheadAttention(eqx.Module):
         self.max_seq_len = max_seq_len
 
     def __call__(self, x: Float[Array, "max_seq_len input_dim"]):
+        # TODO: add KV cache
         seq_len, _ = x.shape
         query = jax.vmap(self.query_projection)(x).reshape(
             seq_len, self.num_heads, self.query_embedding_dim
