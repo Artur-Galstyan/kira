@@ -1,3 +1,6 @@
+import functools as ft
+
+import equinox as eqx
 import jax
 from icecream import ic
 from tinyshakespeareloader.hamlet import get_data
@@ -8,6 +11,50 @@ from kira.train import train
 
 
 def main():
+    max_seq_len = 32
+    batch_size = 64
+    tinyshakespeare = get_data(
+        batch_size=batch_size, block_size=max_seq_len, shuffle=True
+    )
+    train_dataloader, test_dataloader = (
+        tinyshakespeare.train_dataloader,
+        tinyshakespeare.test_dataloader,
+    )
+
+    n_dims = tinyshakespeare.vocab_size if tinyshakespeare.vocab_size else 256
+    n_embd = 384
+    learning_rate = 3e-4
+    num_heads = 6
+    n_layers = 1
+    max_new_tokens = 2000
+    key = jax.random.PRNGKey(0)
+
+    kira, state = eqx.nn.make_with_state(Kira)(
+        n_dims,
+        n_embd,
+        num_heads=num_heads,
+        max_seq_len=max_seq_len,
+        key=key,
+        n_layers=n_layers,
+    )
+
+    x, y = next(iter(train_dataloader))
+    x = x.numpy()
+    y = y.numpy()
+    x = x[0][0].reshape(1, -1)
+
+    key, subkey = jax.random.split(key)
+    partial_kira = ft.partial(kira, key=subkey, state=state)
+    output, state = eqx.filter_vmap(partial_kira)(x)
+    ic(output.shape, state)
+
+    key, subkey = jax.random.split(key)
+    partial_kira = ft.partial(kira, key=subkey, state=state)
+    output = eqx.filter_vmap(partial_kira)(x)
+    ic(output.shape)
+
+
+def test_train():
     max_seq_len = 64
     batch_size = 64
     tinyshakespeare = get_data(

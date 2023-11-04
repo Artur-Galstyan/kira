@@ -73,7 +73,7 @@ class RotaryPositionalEmbedding(eqx.Module):
         encoding applied to the input.
         """
         assert x.ndim == 2, f"x.ndim must be 2, but {x.ndim} != 2."
-        max_seq_len, embedding_size = x.shape
+        seq_len, embedding_size = x.shape
         assert embedding_size == self.embedding_size, (
             f"x.shape[-1] must match self.embedding_size, "
             f"but {x.shape[-1]} != {self.embedding_size}"
@@ -81,13 +81,12 @@ class RotaryPositionalEmbedding(eqx.Module):
         assert (
             embedding_size % 2 == 0
         ), f"x.shape[-1] must be even, but {x.shape[-1]} is not even."
-        assert max_seq_len == self.max_seq_len, (
-            f"x.shape[0] must be == self.max_seq_len, "
-            f"but {x.shape[0]} != {self.max_seq_len}"
+        assert seq_len <= self.max_seq_len, (
+            f"x.shape[0] must be <= self.max_seq_len, "
+            f"but {x.shape[0]} > {self.max_seq_len}"
         )
         neg_half_x = self.negate_half(x)
         freqs_real = jnp.tile(self.freqs_cis.real, (1, 2))
         freqs_imag = jnp.tile(self.freqs_cis.imag, (1, 2))
-
         x_rope = (x * freqs_real) + (neg_half_x * freqs_imag)
         return x_rope
