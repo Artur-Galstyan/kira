@@ -58,8 +58,8 @@ def main():
 
 
 def test_train():
-    max_seq_len = 256  # 64
-    batch_size = 64  # 64
+    max_seq_len = 384  # 64
+    batch_size = 128  # 64
     tinyshakespeare = get_data(
         batch_size=batch_size, block_size=max_seq_len, shuffle=True
     )
@@ -71,8 +71,8 @@ def test_train():
     n_dims = tinyshakespeare.vocab_size if tinyshakespeare.vocab_size else 256
     n_embd = 384
     learning_rate = 3e-4
-    num_heads = 6  # 6
-    n_layers = 6  # 6
+    num_heads = 8  # 6
+    n_layers = 8  # 6
     max_new_tokens = 200
     key = jax.random.PRNGKey(0)
 
@@ -102,7 +102,7 @@ def test_train():
         test_dataloader,
         learning_rate,
         kira,
-        early_stop=10000,
+        early_stop=20000,
         key=subkey,
     )
     ic("Final output")
