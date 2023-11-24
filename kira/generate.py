@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Optional
 
 import equinox as eqx
 import jax
@@ -9,15 +9,18 @@ from kira.model.model import Kira
 
 
 def generate_text(
-    kira: Kira, max_new_tokens: int, decode: Callable[[Array], str], vobab_size: int
+    kira: Kira,
+    state: Optional[eqx.nn.State],
+    max_new_tokens: int,
+    decode: Callable[[Array], str],
+    vobab_size: int,
 ):
     jitted_kira = eqx.filter_jit(kira)
-    max_seq_len = kira.max_seq_len
-    x = jnp.zeros((max_seq_len,), dtype=jnp.int32)
+    x = jnp.zeros((1,), dtype=jnp.int32)
     key = jax.random.PRNGKey(0)
     for _ in range(max_new_tokens):
         key, subkey, kira_key = jax.random.split(key, 3)
-        logits = jitted_kira(x, key=kira_key)
+        logits, state = jitted_kira(x, key=kira_key, state=state)
         logits = logits[-1, :]
         probs = jax.nn.softmax(logits, axis=-1)
 
@@ -27,8 +30,6 @@ def generate_text(
             p=probs,
         )
         next_token = jnp.array(next_token, dtype=jnp.int32).reshape((1,))
-        x = jnp.concatenate([x[1:], next_token])
-
         next_token = min(next_token.item(), vobab_size - 1)
 
         print(decode([next_token]), end="")  # type: ignore

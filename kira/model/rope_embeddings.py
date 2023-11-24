@@ -55,9 +55,8 @@ class RotaryPositionalEmbedding(eqx.Module):
         t = jnp.arange(end)
         freqs_outer = jnp.outer(t, freqs)
         freqs_cis = polar(jnp.ones_like(freqs_outer), freqs_outer)
-        return freqs_cis
+        return jax.lax.stop_gradient(freqs_cis)
 
-    @jax.named_scope("eqx.nn.RotaryPositionalEmbedding")
     def __call__(
         self,
         x: Float[Array, "max_seq_len embedding_size"],

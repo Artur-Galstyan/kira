@@ -8,6 +8,7 @@ import optax
 from icecream import ic
 from jaxtyping import Array, Int, PRNGKeyArray, PyTree
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from kira.model.model import Kira
 
@@ -23,7 +24,7 @@ def train(
     optimizer = optax.adamw(learning_rate=learning_rate)
     opt_state = optimizer.init(eqx.filter(kira, eqx.is_array_like))
 
-    for i, (x, y) in enumerate(train_dataloader):
+    for i, (x, y) in tqdm(enumerate(train_dataloader)):
         x = jnp.array(x)
         y = jnp.array(y)
         key, subkey = jax.random.split(key)
@@ -59,8 +60,8 @@ def loss_fn(
     labels: Int[Array, "batch_size max_seq_len n_dims"],
     key: Optional[PRNGKeyArray],
 ) -> Array:
-    partial_kira = ft.partial(kira, key=key)
-    logits = eqx.filter_vmap(partial_kira)(x)
+    partial_kira = ft.partial(kira, key=key, state=None)
+    logits, _ = eqx.filter_vmap(partial_kira)(x)
     return jnp.mean(optax.softmax_cross_entropy_with_integer_labels(logits, labels))
 
 

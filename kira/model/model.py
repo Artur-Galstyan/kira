@@ -4,7 +4,6 @@ from typing import Optional
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from icecream import ic
 from jaxtyping import Array, Bool, Float, Int, PRNGKeyArray
 
 from kira.model.rope_embeddings import RotaryPositionalEmbedding
@@ -20,7 +19,7 @@ class RMSNorm(eqx.Module):
         self.weight = jnp.ones(dim)
 
     def _norm(self, x: Array):
-        return x * jax.lax.rsqrt(jnp.mean(x ** 2, axis=-1, keepdims=True) + self.eps)
+        return x * jax.lax.rsqrt(jnp.mean(x**2, axis=-1, keepdims=True) + self.eps)
 
     def __call__(self, x: Array) -> Array:
         output = self._norm(x)
@@ -28,9 +27,9 @@ class RMSNorm(eqx.Module):
 
 
 def dot_product_attention_weights(
-        query: Float[Array, "q_seq qk_size"],
-        key: Float[Array, "kv_seq qk_size"],
-        mask: Optional[Bool[Array, "q_seq kv_seq"]] = None,
+    query: Float[Array, "q_seq qk_size"],
+    key: Float[Array, "kv_seq qk_size"],
+    mask: Optional[Bool[Array, "q_seq kv_seq"]] = None,
 ) -> Float[Array, "q_seq kv_seq"]:
     query = query / jnp.sqrt(query.shape[-1])
     logits = jnp.einsum("sd,Sd->sS", query, key)
@@ -47,14 +46,14 @@ def dot_product_attention_weights(
 
 
 def dot_product_attention(
-        query: Float[Array, "q_seq qk_size"],
-        key_: Float[Array, "kv_seq qk_size"],
-        value: Float[Array, "kv_seq v_size"],
-        mask: Optional[Bool[Array, "q_seq kv_seq"]] = None,
-        dropout: Optional[eqx.nn.Dropout] = None,
-        *,
-        key: Optional[PRNGKeyArray] = None,
-        inference: Optional[bool] = None,
+    query: Float[Array, "q_seq qk_size"],
+    key_: Float[Array, "kv_seq qk_size"],
+    value: Float[Array, "kv_seq v_size"],
+    mask: Optional[Bool[Array, "q_seq kv_seq"]] = None,
+    dropout: Optional[eqx.nn.Dropout] = None,
+    *,
+    key: Optional[PRNGKeyArray] = None,
+    inference: Optional[bool] = None,
 ) -> Float[Array, "q_seq v_size"]:
     weights = dot_product_attention_weights(query, key_, mask)
     if dropout is not None:
@@ -85,27 +84,26 @@ class MultiheadAttention(eqx.Module):
 
     output: eqx.nn.Linear
 
-    query_rope_embeddings: RotaryPositionalEmbedding
-    key_rope_embeddings: RotaryPositionalEmbedding
-
     max_seq_len: int = eqx.field(static=True)
+    kv_cache_index: Optional[eqx.nn.StateIndex]
 
-    kv_cache_index: eqx.nn.StateIndex
+    key_rope_embeddings: RotaryPositionalEmbedding
+    query_rope_embeddings: RotaryPositionalEmbedding
 
     def __init__(
-            self,
-            query_embedding_dim: int,
-            key_embedding_dim: int,
-            value_embedding_dim: int,
-            query_input_dim: int,
-            key_input_dim: int,
-            value_input_dim: int,
-            num_heads: int,
-            output_dim: int,
-            query_multihead_dim: int,
-            kv_multihead_dim: int,
-            max_seq_len: int,
-            key: PRNGKeyArray,
+        self,
+        query_embedding_dim: int,
+        key_embedding_dim: int,
+        value_embedding_dim: int,
+        query_input_dim: int,
+        key_input_dim: int,
+        value_input_dim: int,
+        num_heads: int,
+        output_dim: int,
+        query_multihead_dim: int,
+        kv_multihead_dim: int,
+        key: PRNGKeyArray,
+        max_seq_len: int = None,
     ):
         key, qkey, kkey, vkey, okey = jax.random.split(key, 5)
         self.query_projection = eqx.nn.Linear(
@@ -153,43 +151,47 @@ class MultiheadAttention(eqx.Module):
             (
                 jnp.zeros(shape=(max_seq_len, num_heads, key_embedding_dim)),
                 jnp.zeros(shape=(max_seq_len, num_heads, value_embedding_dim)),
-                0,
+                jnp.zeros(shape=(1,), dtype=jnp.int32),
             )
         )
 
-    def __call__(self, x: Float[Array, "1 input_dim"], state: eqx.nn.State):
-        # TODO: add KV cache
-        ic(state)
-        kv_cache = state.get(self.kv_cache_index)
-        key_cache: Array = kv_cache[0]
-        value_cache: Array = kv_cache[1]
-        index: Array = kv_cache[2]
-        ic(key_cache.shape, value_cache.shape, index)
-
+    def __call__(
+        self, x: Float[Array, "seq_len input_dim"], state: Optional[eqx.nn.State]
+    ):
         seq_len, _ = x.shape
+        key_cache, value_cache, index = None, None, None
+
+        if state is None:
+            assert (
+                seq_len == self.max_seq_len
+            ), "if not autoregressive, seq_len must be max_seq_len"
+        else:
+            kv_cache = state.get(self.kv_cache_index)
+            key_cache, value_cache, index = kv_cache
+            index = index[0]
+
         query = jax.vmap(self.query_projection)(x).reshape(
             seq_len, self.num_heads, self.query_embedding_dim
         )
-        query = jax.vmap(self.query_rope_embeddings, in_axes=1, out_axes=1)(query)
-        query = query[0:1]
+
         key_ = jax.vmap(self.key_projection)(x).reshape(
             seq_len, self.kv_multihead_dim, self.key_embedding_dim
         )
-        key_ = jax.vmap(self.key_rope_embeddings, in_axes=1, out_axes=1)(key_)
 
-        key_ = key_[0:1]
         value = jax.vmap(self.value_projection)(x).reshape(
             seq_len, self.kv_multihead_dim, self.value_embedding_dim
         )
-        # replace in kv_cache
-        key_cache = jax.lax.dynamic_update_slice_in_dim(
-            key_cache, key_, start_index=index, axis=0
-        )
-        value_cache = jax.lax.dynamic_update_slice_in_dim(
-            value_cache, value, start_index=index, axis=0
-        )
 
-        ic(query.shape, key_.shape, value.shape, key_cache.shape, value_cache.shape)
+        if state is not None:
+            key_cache = jax.lax.dynamic_update_slice_in_dim(
+                key_cache, key_, start_index=index, axis=0
+            )
+            value_cache = jax.lax.dynamic_update_slice_in_dim(
+                value_cache, value, start_index=index, axis=0
+            )
+        else:
+            key_cache = key_
+            value_cache = value
 
         mask = jnp.tril(jnp.ones(shape=(seq_len, self.max_seq_len))) == 1
         dpa = ft.partial(
@@ -200,11 +202,14 @@ class MultiheadAttention(eqx.Module):
 
         concatenation = attn.reshape(seq_len, -1)
         output = jax.vmap(self.output)(concatenation)
-        new_state = state.set(
-            item=self.kv_cache_index,
-            value=(key_cache, value_cache, index + 1),
-        )
-        ic(new_state)
+
+        new_state = state
+        if state is not None:
+            new_state = state.set(
+                item=self.kv_cache_index,
+                value=(key_cache, value_cache, jnp.array([index + 1], dtype=jnp.int32)),
+            )
+
         return output, new_state
 
 
@@ -219,23 +224,22 @@ class Block(eqx.nn.StatefulLayer):
     num_heads: int = eqx.field(static=True)
 
     def __init__(
-            self,
-            n_embd: int,
-            num_heads: int,
-            max_seq_len: int,
-            width_size: int = 64,
-            depth: int = 1,
-            p: float = 0.2,
-            *,
-            key,
-            **kwargs,
+        self,
+        n_embd: int,
+        num_heads: int,
+        max_seq_len: int,
+        width_size: int = 64,
+        depth: int = 1,
+        p: float = 0.2,
+        *,
+        key,
+        **kwargs,
     ):
         super().__init__(**kwargs)
         key, *subkeys = jax.random.split(key, 5)
         self.n_embd = n_embd
         self.max_seq_len = max_seq_len
         self.num_heads = num_heads
-
         self.mha_attention = MultiheadAttention(
             query_input_dim=n_embd,
             query_embedding_dim=n_embd,
@@ -260,16 +264,14 @@ class Block(eqx.nn.StatefulLayer):
         self.dropout = eqx.nn.Dropout(p=p)
 
     def __call__(
-            self,
-            x: Int[Array, "max_seq_len input_dim"],
-            *,
-            state: eqx.nn.State,
-            key: Optional[PRNGKeyArray],
-            **kwargs,
+        self,
+        x: Int[Array, "max_seq_len input_dim"],
+        *,
+        state: Optional[eqx.nn.State],
+        key: Optional[PRNGKeyArray],
+        **kwargs,
     ):
-        ic("BLOCK", state)
         mha, new_state = self.mha_attention(self.rms_norm(x), state)
-        ic("BLOCK", new_state)
         x = mha + x
         inference = True if key is None else False
         d_key1 = None
@@ -298,15 +300,15 @@ class Kira(eqx.Module):
     rms_norm: RMSNorm
 
     def __init__(
-            self,
-            n_dims: int,
-            n_embd: int,
-            num_heads: int,
-            max_seq_len: int,
-            n_layers: int = 4,
-            *,
-            key,
-            **kwargs,
+        self,
+        n_dims: int,
+        n_embd: int,
+        num_heads: int,
+        max_seq_len: int,
+        n_layers: int = 4,
+        *,
+        key,
+        **kwargs,
     ):
         super().__init__(**kwargs)
         self.n_dims = n_dims
@@ -316,10 +318,14 @@ class Kira(eqx.Module):
         key, *subkeys = jax.random.split(key, n_layers + 2)
 
         self.input_embedding = eqx.nn.Embedding(n_dims, n_embd, key=subkeys[0])
-
         self.blocks = eqx.nn.Sequential(
             [
-                Block(n_embd, num_heads, max_seq_len, key=subkeys[i + 1])
+                Block(
+                    n_embd,
+                    num_heads,
+                    max_seq_len,
+                    key=subkeys[i + 1],
+                )
                 for i in range(n_layers)
             ]
         )
@@ -327,18 +333,15 @@ class Kira(eqx.Module):
         self.output = eqx.nn.Linear(n_embd, n_dims, key=subkeys[-1])
 
     def __call__(
-            self,
-            x: Int[Array, "seq_len"],
-            *,
-            key: Optional[PRNGKeyArray],
-            state: eqx.nn.State,
-            **kwargs,
+        self,
+        x: Int[Array, "seq_len"],
+        state: Optional[eqx.nn.State],
+        key: Optional[PRNGKeyArray],
     ):
-        # print("JIT")
-        ic("KIRA", state)
+        new_state = state
         x = jax.vmap(self.input_embedding)(x)
         x, new_state = self.blocks(x, key=key, state=state)
-        ic("KIRA", new_state)
         x = self.rms_norm(x)
         x = jax.vmap(self.output)(x)
+
         return x, new_state
