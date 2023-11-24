@@ -58,7 +58,7 @@ def main():
 
 
 def test_train():
-    max_seq_len = 128  # 64
+    max_seq_len = 256  # 64
     batch_size = 64  # 64
     tinyshakespeare = get_data(
         batch_size=batch_size, block_size=max_seq_len, shuffle=True
@@ -102,7 +102,7 @@ def test_train():
         test_dataloader,
         learning_rate,
         kira,
-        early_stop=5000,
+        early_stop=10000,
         key=subkey,
     )
     ic("Final output")
