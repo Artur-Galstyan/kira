@@ -114,6 +114,9 @@ def test_train():
         tinyshakespeare.vocab_size,
     )
 
+    # save model
+    eqx.tree_serialise_leaves("kira1.eqx", kira)
+
 
 if __name__ == "__main__":
     with jax.checking_leaks():
