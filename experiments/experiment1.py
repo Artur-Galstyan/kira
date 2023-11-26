@@ -1,10 +1,10 @@
 import equinox as eqx
 import jax
-import wandb
 from icecream import ic
 from tinyshakespeareloader.hamlet import get_data
 from tqdm import tqdm
 
+import wandb
 from kira.generate import generate_text_without_kv_cache, generate_text
 from kira.model.model import Kira
 from kira.train import train
@@ -82,6 +82,7 @@ for epoch in tqdm(range(n_epochs)):
         kira,
         subkey,
         early_stop=early_stop,
+        wandb_client=wandb,
     )
 
     text_without_kv = generate_text_without_kv_cache(
