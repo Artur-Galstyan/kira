@@ -1,0 +1,61 @@
+wandb_version: 1
+
+n_epochs:
+  desc: null
+  value: 50
+n_dims:
+  desc: null
+  value: 65
+n_embd:
+  desc: null
+  value: 384
+num_heads:
+  desc: null
+  value: 6
+n_layers:
+  desc: null
+  value: 6
+max_seq_len:
+  desc: null
+  value: 128
+batch_size:
+  desc: null
+  value: 128
+learning_rate:
+  desc: null
+  value: 0.0003
+max_new_tokens:
+  desc: null
+  value: 2000
+early_stop:
+  desc: null
+  value: null
+key_seed:
+  desc: null
+  value: 0
+_wandb:
+  desc: null
+  value:
+    python_version: 3.11.6
+    cli_version: 0.16.0
+    framework: torch
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1701034287.256716
+    t:
+      1:
+      - 1
+      - 12
+      - 55
+      2:
+      - 1
+      - 12
+      - 55
+      3:
+      - 16
+      - 23
+      4: 3.11.6
+      5: 0.16.0
+      8:
+      - 5
+      13: linux-x86_64
