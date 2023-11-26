@@ -24,13 +24,17 @@ def train(
     optimizer = optax.adamw(learning_rate=learning_rate)
     opt_state = optimizer.init(eqx.filter(kira, eqx.is_inexact_array))
     loss_tqdm = tqdm(
-        total=early_stop, desc="train loss", position=2, bar_format="{desc}"
+        total=early_stop,
+        desc="train loss",
+        position=2,
+        bar_format="{desc}",
+        leave=False,
     )
     eval_loss_tqdm = tqdm(
-        total=early_stop, desc="eval loss", position=3, bar_format="{desc}"
+        total=early_stop, desc="eval loss", position=1, bar_format="{desc}", leave=False
     )
     for i, (x, y) in tqdm(
-        enumerate(train_dataloader), desc="train", position=1, leave=False
+        enumerate(train_dataloader), desc="train", position=0, leave=False
     ):
         x = jnp.array(x)
         y = jnp.array(y)
