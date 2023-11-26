@@ -5,7 +5,6 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import optax
-from icecream import ic
 from jaxtyping import Array, Int, PRNGKeyArray, PyTree
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -20,20 +19,32 @@ def train(
     kira: Kira,
     key: PRNGKeyArray,
     early_stop: int | None = None,
+    wandb_client: Any | None = None,
 ) -> Kira:
     optimizer = optax.adamw(learning_rate=learning_rate)
-    opt_state = optimizer.init(eqx.filter(kira, eqx.is_array_like))
-
-    for i, (x, y) in tqdm(enumerate(train_dataloader)):
+    opt_state = optimizer.init(eqx.filter(kira, eqx.is_inexact_array))
+    loss_tqdm = tqdm(
+        total=early_stop, desc="train loss", position=2, bar_format="{desc}"
+    )
+    eval_loss_tqdm = tqdm(
+        total=early_stop, desc="eval loss", position=3, bar_format="{desc}"
+    )
+    for i, (x, y) in tqdm(
+        enumerate(train_dataloader), desc="train", position=1, leave=False
+    ):
         x = jnp.array(x)
         y = jnp.array(y)
         key, subkey = jax.random.split(key)
         kira, opt_state, loss_value = step(kira, opt_state, x, y, optimizer, key=subkey)
         if i % 100 == 0:
-            ic(i, loss_value)
+            loss_tqdm.set_description_str(f"train loss: {loss_value}")
+            if wandb_client is not None:
+                wandb_client.log({"train_loss": loss_value})
         if i % 1000 == 0:
             eval_loss = evaluate(test_dataloader, kira)
-            ic(i, loss_value, eval_loss)
+            eval_loss_tqdm.set_description_str(f"eval loss: {eval_loss}")
+            if wandb_client is not None:
+                wandb_client.log({"eval_loss": eval_loss})
         if early_stop is not None and i > early_stop:
             break
     return kira
