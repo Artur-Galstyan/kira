@@ -25,7 +25,7 @@ n_layers = 6
 max_new_tokens = 2000
 early_stop = None
 key_seed = 0
-n_epochs = 50
+n_epochs = 1
 key = jax.random.PRNGKey(key_seed)
 
 wandb.init(
@@ -85,6 +85,7 @@ for epoch in tqdm(range(n_epochs)):
         wandb_client=wandb,
     )
 
+    print("Generating text without kv cache...")
     text_without_kv = generate_text_without_kv_cache(
         kira,
         max_seq_len,
@@ -92,7 +93,9 @@ for epoch in tqdm(range(n_epochs)):
         tinyshakespeare.decode,
         vobab_size=n_dims,
     )
+    ic(text_without_kv)
 
+    print("Generating text with kv cache...")
     text_with_state = generate_text(
         kira,
         init_state,
@@ -100,6 +103,6 @@ for epoch in tqdm(range(n_epochs)):
         tinyshakespeare.decode,
         vobab_size=n_dims,
     )
-    ic(text_without_kv)
+    ic(text_with_state)
 
 eqx.tree_serialise_leaves("kira-experiment1.eqx", kira)
