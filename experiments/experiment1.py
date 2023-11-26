@@ -9,8 +9,8 @@ from kira.generate import generate_text_without_kv_cache, generate_text
 from kira.model.model import Kira
 from kira.train import train
 
-max_seq_len = 8
-batch_size = 4
+max_seq_len = 128
+batch_size = 128
 tinyshakespeare = get_data(batch_size=batch_size, block_size=max_seq_len, shuffle=True)
 train_dataloader, test_dataloader = (
     tinyshakespeare.train_dataloader,

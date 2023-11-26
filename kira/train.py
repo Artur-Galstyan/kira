@@ -23,15 +23,16 @@ def train(
 ) -> Kira:
     optimizer = optax.adamw(learning_rate=learning_rate)
     opt_state = optimizer.init(eqx.filter(kira, eqx.is_inexact_array))
+    total = len(train_dataloader) if early_stop is None else early_stop
     loss_tqdm = tqdm(
-        total=early_stop,
+        total=total,
         desc="train loss",
         position=2,
         bar_format="{desc}",
         leave=False,
     )
     eval_loss_tqdm = tqdm(
-        total=early_stop, desc="eval loss", position=1, bar_format="{desc}", leave=False
+        total=total, desc="eval loss", position=1, bar_format="{desc}", leave=False
     )
     for i, (x, y) in tqdm(
         enumerate(train_dataloader), desc="train", position=0, leave=False
