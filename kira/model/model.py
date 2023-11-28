@@ -41,7 +41,6 @@ def dot_product_attention_weights(
                 f"{key.shape[0]}). Got {mask.shape}."
             )
         logits = jnp.where(mask, logits, jnp.finfo(logits.dtype).min)
-
     return jax.nn.softmax(logits, axis=-1)  # pyright: ignore
 
 
@@ -184,16 +183,32 @@ class MultiheadAttention(eqx.Module):
 
         if state is not None:
             key_cache = jax.lax.dynamic_update_slice_in_dim(
-                key_cache, key_, start_index=index, axis=0
+                key_cache,
+                key_,
+                start_index=index,
+                axis=0,
             )
             value_cache = jax.lax.dynamic_update_slice_in_dim(
-                value_cache, value, start_index=index, axis=0
+                value_cache,
+                value,
+                start_index=index,
+                axis=0,
             )
+
         else:
             key_cache = key_
             value_cache = value
 
-        mask = jnp.tril(jnp.ones(shape=(seq_len, self.max_seq_len))) == 1
+        # jax.debug.print("key_cache: {}", key_cache)
+        # TODO: Mask creation is not correct!
+        if state is None:
+            mask = jnp.tril(jnp.ones(shape=(self.max_seq_len, self.max_seq_len))) == 1
+        else:
+            mask = jnp.full(
+                (1, self.max_seq_len), False
+            )  # Initialize all elements to False
+            mask = mask.at[0, : int(index) + 1].set(True)
+
         dpa = ft.partial(
             dot_product_attention,
             mask=mask,
@@ -338,7 +353,6 @@ class Kira(eqx.Module):
         state: Optional[eqx.nn.State],
         key: Optional[PRNGKeyArray],
     ):
-        new_state = state
         x = jax.vmap(self.input_embedding)(x)
         x, new_state = self.blocks(x, key=key, state=state)
         x = self.rms_norm(x)
