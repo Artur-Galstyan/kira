@@ -5,7 +5,7 @@ from tinyshakespeareloader.hamlet import get_data
 from tqdm import tqdm
 
 import wandb
-from kira.generate import generate_text_without_kv_cache, generate_text
+from kira.generate import generate_text
 from kira.model.model import Kira
 from kira.train import train
 
@@ -45,7 +45,7 @@ wandb.init(
     },
 )
 
-kira, init_state = eqx.nn.make_with_state(Kira)(
+kira = Kira(
     n_dims=n_dims,
     n_embd=n_embd,
     num_heads=num_heads,
@@ -55,22 +55,13 @@ kira, init_state = eqx.nn.make_with_state(Kira)(
 )
 
 
-init_text = generate_text_without_kv_cache(
-    kira,
-    max_seq_len,
-    max_new_tokens,
-    tinyshakespeare.decode,
-    vobab_size=n_dims,
-)
-ic(init_text)
 init_text_with_state = generate_text(
     kira,
-    init_state,
     max_new_tokens,
+    512,
     tinyshakespeare.decode,
     vobab_size=n_dims,
 )
-ic(init_text_with_state)
 
 
 for epoch in tqdm(range(n_epochs)):
@@ -85,24 +76,14 @@ for epoch in tqdm(range(n_epochs)):
         wandb_client=wandb,
     )
 
-    print("Generating text without kv cache...")
-    text_without_kv = generate_text_without_kv_cache(
-        kira,
-        max_seq_len,
-        max_new_tokens,
-        tinyshakespeare.decode,
-        vobab_size=n_dims,
-    )
-    ic(text_without_kv)
-
     print("Generating text with kv cache...")
     text_with_state = generate_text(
         kira,
-        init_state,
         max_new_tokens,
+        512,
         tinyshakespeare.decode,
         vobab_size=n_dims,
     )
     ic(text_with_state)
 
-eqx.tree_serialise_leaves("kira-experiment1.eqx", kira)
+eqx.tree_serialise_leaves("kira-experiment2.eqx", kira)
