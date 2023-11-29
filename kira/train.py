@@ -76,7 +76,7 @@ def loss_fn(
     labels: Int[Array, "batch_size max_seq_len n_dims"],
     key: Optional[PRNGKeyArray],
 ) -> Array:
-    partial_kira = ft.partial(kira, key=key, state=None)
+    partial_kira = ft.partial(kira, key=key)
     logits, _ = eqx.filter_vmap(partial_kira)(x)
     return jnp.mean(optax.softmax_cross_entropy_with_integer_labels(logits, labels))
 

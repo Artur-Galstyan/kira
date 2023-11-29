@@ -1,4 +1,3 @@
-import equinox as eqx
 import jax
 from tinyshakespeareloader.hamlet import get_data
 
@@ -25,7 +24,7 @@ def main():
     max_new_tokens = 2000
     key = jax.random.PRNGKey(0)
 
-    kira, state = eqx.nn.make_with_state(Kira)(
+    kira = Kira(
         n_dims=n_dims,
         n_embd=n_embd,
         num_heads=num_heads,
