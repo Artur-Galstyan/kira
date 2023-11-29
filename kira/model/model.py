@@ -204,10 +204,15 @@ class MultiheadAttention(eqx.Module):
         if state is None:
             mask = jnp.tril(jnp.ones(shape=(self.max_seq_len, self.max_seq_len))) == 1
         else:
-            mask = jnp.full(
-                (1, self.max_seq_len), False
-            )  # Initialize all elements to False
-            mask = mask.at[0, : int(index) + 1].set(True)
+            query_indices = jnp.arange(seq_len)[:, None]
+            kv_indices = jnp.arange(self.max_seq_len)[None, :]
+            mask = kv_indices <= query_indices + int(index)
+            # Also mask out the latter parts of the state we haven't written into yet.
+            unwritten_mask = jnp.arange(self.max_seq_len) < index  # pyright: ignore
+            if mask is None:
+                mask = jnp.broadcast_to(unwritten_mask, (seq_len, self.max_seq_len))
+            else:
+                mask = mask & unwritten_mask
 
         dpa = ft.partial(
             dot_product_attention,
