@@ -1,4 +1,5 @@
 import equinox as eqx
+import icecream
 import jax
 from icecream import ic
 from tinyshakespeareloader.hamlet import get_data
@@ -17,6 +18,7 @@ train_dataloader, test_dataloader = (
     tinyshakespeare.test_dataloader,
 )
 
+icecream.install()
 n_dims = tinyshakespeare.vocab_size if tinyshakespeare.vocab_size else 256
 n_embd = 384
 learning_rate = 3e-4
@@ -28,22 +30,22 @@ key_seed = 0
 n_epochs = 1
 key = jax.random.PRNGKey(key_seed)
 
-wandb.init(
-    project="kira",
-    config={
-        "n_epochs": n_epochs,
-        "n_dims": n_dims,
-        "n_embd": n_embd,
-        "num_heads": num_heads,
-        "n_layers": n_layers,
-        "max_seq_len": max_seq_len,
-        "batch_size": batch_size,
-        "learning_rate": learning_rate,
-        "max_new_tokens": max_new_tokens,
-        "early_stop": early_stop,
-        "key_seed": key_seed,
-    },
-)
+# wandb.init(
+#     project="kira",
+#     config={
+#         "n_epochs": n_epochs,
+#         "n_dims": n_dims,
+#         "n_embd": n_embd,
+#         "num_heads": num_heads,
+#         "n_layers": n_layers,
+#         "max_seq_len": max_seq_len,
+#         "batch_size": batch_size,
+#         "learning_rate": learning_rate,
+#         "max_new_tokens": max_new_tokens,
+#         "early_stop": early_stop,
+#         "key_seed": key_seed,
+#     },
+# )
 
 kira = Kira(
     n_dims=n_dims,
@@ -57,8 +59,8 @@ kira = Kira(
 
 init_text_with_state = generate_text(
     kira,
+    max_seq_len,
     max_new_tokens,
-    512,
     tinyshakespeare.decode,
     vobab_size=n_dims,
 )

@@ -21,7 +21,7 @@ def generate_text(
     text = ""
     for _ in range(max_new_tokens):
         key, subkey, kira_key = jax.random.split(key, 3)
-        logits, _ = jitted_kira(x, key=kira_key)
+        logits = jitted_kira(x, key=kira_key)
         logits = logits[-1, :]
         probs = jax.nn.softmax(logits, axis=-1)
 
