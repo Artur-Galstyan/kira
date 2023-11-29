@@ -30,22 +30,22 @@ key_seed = 0
 n_epochs = 1
 key = jax.random.PRNGKey(key_seed)
 
-# wandb.init(
-#     project="kira",
-#     config={
-#         "n_epochs": n_epochs,
-#         "n_dims": n_dims,
-#         "n_embd": n_embd,
-#         "num_heads": num_heads,
-#         "n_layers": n_layers,
-#         "max_seq_len": max_seq_len,
-#         "batch_size": batch_size,
-#         "learning_rate": learning_rate,
-#         "max_new_tokens": max_new_tokens,
-#         "early_stop": early_stop,
-#         "key_seed": key_seed,
-#     },
-# )
+wandb.init(
+    project="kira",
+    config={
+        "n_epochs": n_epochs,
+        "n_dims": n_dims,
+        "n_embd": n_embd,
+        "num_heads": num_heads,
+        "n_layers": n_layers,
+        "max_seq_len": max_seq_len,
+        "batch_size": batch_size,
+        "learning_rate": learning_rate,
+        "max_new_tokens": max_new_tokens,
+        "early_stop": early_stop,
+        "key_seed": key_seed,
+    },
+)
 
 kira = Kira(
     n_dims=n_dims,
