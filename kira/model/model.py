@@ -150,10 +150,12 @@ class MultiheadAttention(eqx.Module):
         query = jax.vmap(self.query_projection)(x).reshape(
             self.max_seq_len, self.num_heads, self.query_embedding_dim
         )
+        query = jax.vmap(self.query_rope_embeddings, in_axes=1, out_axes=1)(query)
 
         key_ = jax.vmap(self.key_projection)(x).reshape(
             self.max_seq_len, self.kv_multihead_dim, self.key_embedding_dim
         )
+        key_ = jax.vmap(self.key_rope_embeddings, in_axes=1, out_axes=1)(key_)
 
         value = jax.vmap(self.value_projection)(x).reshape(
             self.max_seq_len, self.kv_multihead_dim, self.value_embedding_dim
