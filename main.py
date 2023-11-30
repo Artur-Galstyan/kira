@@ -19,7 +19,9 @@ def main():
     n_dims = tinyshakespeare.vocab_size if tinyshakespeare.vocab_size else 256
     n_embd = 128  # 384
     learning_rate = 3e-4
-    num_heads = 1  # 6
+    num_heads = 3  # 6
+    num_query_heads = 1  # 6
+    num_kv_heads = 2  # 6
     n_layers = 1  # 6
     max_new_tokens = 2000
     key = jax.random.PRNGKey(0)
@@ -28,6 +30,8 @@ def main():
         n_dims=n_dims,
         n_embd=n_embd,
         num_heads=num_heads,
+        num_query_heads=num_query_heads,
+        num_kv_heads=num_kv_heads,
         max_seq_len=max_seq_len,
         key=key,
         n_layers=n_layers,

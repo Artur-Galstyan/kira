@@ -45,6 +45,27 @@ def dot_product_attention_weights(
     return jax.nn.softmax(logits, axis=-1)  # pyright: ignore
 
 
+def vmapped_attention(
+    query_heads,
+    key_heads,
+    value_heads,
+    dropout=None,
+    inference=None,
+    mask=None,
+    keys=None,
+):
+    attn_fn = ft.partial(
+        dot_product_attention, dropout=dropout, inference=inference, key=keys, mask=mask
+    )
+    # Batch `keys` down its first axis as it is passed as a keyword argument.
+    dpa = jax.vmap(
+        lambda q, k, v: attn_fn(q, k, v),
+        in_axes=(1, None, None),
+        out_axes=1,
+    )(query_heads, key_heads, value_heads)
+    return dpa
+
+
 def dot_product_attention(
     query: Float[Array, "q_seq qk_size"],
     key_: Float[Array, "kv_seq qk_size"],
@@ -97,8 +118,8 @@ class MultiheadAttention(eqx.Module):
         query_input_dim: int,
         key_input_dim: int,
         value_input_dim: int,
-        num_heads: int,
         output_dim: int,
+        num_heads: int,
         query_multihead_dim: int,
         kv_multihead_dim: int,
         key: PRNGKeyArray,
@@ -106,7 +127,10 @@ class MultiheadAttention(eqx.Module):
     ):
         key, qkey, kkey, vkey, okey = jax.random.split(key, 5)
         self.query_projection = eqx.nn.Linear(
-            query_input_dim, num_heads * query_embedding_dim, key=qkey, use_bias=False
+            query_input_dim,
+            query_multihead_dim * query_embedding_dim,
+            key=qkey,
+            use_bias=False,
         )
         self.key_projection = eqx.nn.Linear(
             key_input_dim,
@@ -148,7 +172,7 @@ class MultiheadAttention(eqx.Module):
 
     def __call__(self, x: Float[Array, "max_seq_len input_dim"]):
         query = jax.vmap(self.query_projection)(x).reshape(
-            self.max_seq_len, self.num_heads, self.query_embedding_dim
+            self.max_seq_len, self.query_multihead_dim, self.query_embedding_dim
         )
         query = jax.vmap(self.query_rope_embeddings, in_axes=1, out_axes=1)(query)
         key_ = jax.vmap(self.key_projection)(x).reshape(
@@ -161,11 +185,28 @@ class MultiheadAttention(eqx.Module):
         )
 
         mask = jnp.tril(jnp.ones(shape=(self.max_seq_len, self.max_seq_len))) == 1
-        dpa = ft.partial(
-            dot_product_attention,
-            mask=mask,
-        )
-        attn = jax.vmap(dpa, in_axes=1, out_axes=1)(query, key_, value)
+
+        if (
+            self.kv_multihead_dim == self.num_heads
+            and self.query_multihead_dim == self.num_heads
+        ):
+            dpa = ft.partial(
+                dot_product_attention,
+                mask=mask,
+            )
+            attn = jax.vmap(dpa, in_axes=1, out_axes=1)(query, key_, value)
+        else:
+            pt_vmapped_attention = ft.partial(
+                vmapped_attention,
+                mask=mask,
+            )
+            attn = jax.vmap(pt_vmapped_attention, in_axes=(None, 1, 1), out_axes=1)(
+                query, key_, value
+            )
+
+            attn = jnp.sum(attn, axis=1)
+            # Taking the mean over the d dimension
+            attn = attn / self.kv_multihead_dim
 
         concatenation = attn.reshape(self.max_seq_len, -1)
         output = jax.vmap(self.output)(concatenation)
@@ -181,12 +222,17 @@ class Block(eqx.Module):
 
     n_embd: int = eqx.field(static=True)
     max_seq_len: int = eqx.field(static=True)
+
     num_heads: int = eqx.field(static=True)
+    num_query_heads: int = eqx.field(static=True)
+    num_kv_heads: int = eqx.field(static=True)
 
     def __init__(
         self,
         n_embd: int,
         num_heads: int,
+        num_query_heads: int,
+        num_kv_heads: int,
         max_seq_len: int,
         width_size: int = 64,
         depth: int = 1,
@@ -200,6 +246,8 @@ class Block(eqx.Module):
         self.n_embd = n_embd
         self.max_seq_len = max_seq_len
         self.num_heads = num_heads
+        self.num_query_heads = num_query_heads
+        self.num_kv_heads = num_kv_heads
         self.mha_attention = MultiheadAttention(
             query_input_dim=n_embd,
             query_embedding_dim=n_embd,
@@ -207,11 +255,11 @@ class Block(eqx.Module):
             key_embedding_dim=n_embd,
             value_input_dim=n_embd,
             value_embedding_dim=n_embd,
-            num_heads=num_heads,
             output_dim=n_embd,
-            query_multihead_dim=num_heads,
-            kv_multihead_dim=num_heads,
+            query_multihead_dim=num_query_heads,
+            kv_multihead_dim=num_kv_heads,
             max_seq_len=max_seq_len,
+            num_heads=num_heads,
             key=subkeys[0],
         )
 
@@ -251,6 +299,9 @@ class Kira(eqx.Module):
     n_embd: int = eqx.field(static=True)
     n_layers: int = eqx.field(static=True)
     max_seq_len: int = eqx.field(static=True)
+    num_heads: int = eqx.field(static=True)
+    num_query_heads: int = eqx.field(static=True)
+    num_kv_heads: int = eqx.field(static=True)
 
     blocks: eqx.nn.Sequential
 
@@ -263,6 +314,8 @@ class Kira(eqx.Module):
         n_dims: int,
         n_embd: int,
         num_heads: int,
+        num_query_heads: int,
+        num_kv_heads: int,
         max_seq_len: int,
         n_layers: int = 4,
         *,
@@ -274,6 +327,10 @@ class Kira(eqx.Module):
         self.n_embd = n_embd
         self.max_seq_len = max_seq_len
         self.n_layers = n_layers
+        self.num_heads = num_heads
+        self.num_query_heads = num_query_heads
+        self.num_kv_heads = num_kv_heads
+
         key, *subkeys = jax.random.split(key, n_layers + 2)
 
         self.input_embedding = eqx.nn.Embedding(n_dims, n_embd, key=subkeys[0])
@@ -282,6 +339,8 @@ class Kira(eqx.Module):
                 Block(
                     n_embd,
                     num_heads,
+                    num_query_heads,
+                    num_kv_heads,
                     max_seq_len,
                     key=subkeys[i + 1],
                 )

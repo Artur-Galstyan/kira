@@ -23,6 +23,8 @@ n_dims = tinyshakespeare.vocab_size if tinyshakespeare.vocab_size else 256
 n_embd = 384
 learning_rate = 3e-4
 num_heads = 6
+num_query_heads = 6
+num_kv_heads = 3
 n_layers = 6
 max_new_tokens = 2000
 early_stop = None
@@ -43,6 +45,8 @@ wandb.init(
         "learning_rate": learning_rate,
         "max_new_tokens": max_new_tokens,
         "early_stop": early_stop,
+        "num_query_heads": num_query_heads,
+        "num_kv_heads": num_kv_heads,
         "key_seed": key_seed,
     },
 )
@@ -51,6 +55,8 @@ kira = Kira(
     n_dims=n_dims,
     n_embd=n_embd,
     num_heads=num_heads,
+    num_query_heads=num_query_heads,
+    num_kv_heads=num_kv_heads,
     max_seq_len=max_seq_len,
     key=key,
     n_layers=n_layers,
