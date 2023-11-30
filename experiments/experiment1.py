@@ -81,11 +81,11 @@ for epoch in tqdm(range(n_epochs)):
     print("Generating text with kv cache...")
     text_with_state = generate_text(
         kira,
+        max_seq_len,
         max_new_tokens,
-        512,
         tinyshakespeare.decode,
         vobab_size=n_dims,
     )
     ic(text_with_state)
 
-eqx.tree_serialise_leaves("kira-experiment2.eqx", kira)
+eqx.tree_serialise_leaves("kira-experiment3.eqx", kira)
