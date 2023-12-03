@@ -1,5 +1,4 @@
 import equinox as eqx
-import icecream
 import jax
 from icecream import ic
 from tinyshakespeareloader.hamlet import get_data
@@ -18,7 +17,7 @@ train_dataloader, test_dataloader = (
     tinyshakespeare.test_dataloader,
 )
 
-icecream.install()
+
 n_dims = tinyshakespeare.vocab_size if tinyshakespeare.vocab_size else 256
 n_embd = 384
 learning_rate = 3e-4

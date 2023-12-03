@@ -126,6 +126,9 @@ class MultiheadAttention(eqx.Module):
         max_seq_len: int = None,
     ):
         key, qkey, kkey, vkey, okey = jax.random.split(key, 5)
+        assert (
+            query_multihead_dim == num_heads
+        ), "query_multihead_dim must be equal to num_heads"
         self.query_projection = eqx.nn.Linear(
             query_input_dim,
             query_multihead_dim * query_embedding_dim,
@@ -196,6 +199,7 @@ class MultiheadAttention(eqx.Module):
             )
             attn = jax.vmap(dpa, in_axes=1, out_axes=1)(query, key_, value)
         else:
+            # interpolate MQA and MHA
             pt_vmapped_attention = ft.partial(
                 vmapped_attention,
                 mask=mask,
@@ -203,7 +207,6 @@ class MultiheadAttention(eqx.Module):
             attn = jax.vmap(pt_vmapped_attention, in_axes=(None, 1, 1), out_axes=1)(
                 query, key_, value
             )
-
             attn = jnp.sum(attn, axis=1)
             # Taking the mean over the d dimension
             attn = attn / self.kv_multihead_dim

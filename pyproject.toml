@@ -19,6 +19,9 @@ torch = "^2.1.0"
 icecream = "^2.1.3"
 tqdm = "^4.66.1"
 wandb = "^0.16.0"
+mido = "^1.3.0"
+beautifulsoup4 = "^4.12.2"
+pandas = "^2.1.3"
 
 
 [build-system]
