@@ -23,7 +23,7 @@ n_embd = 384
 learning_rate = 3e-4
 num_heads = 6
 num_query_heads = 6
-num_kv_heads = 3
+num_kv_heads = 1
 n_layers = 6
 max_new_tokens = 2000
 early_stop = None
@@ -93,4 +93,4 @@ for epoch in tqdm(range(n_epochs)):
     )
     ic(text_with_state)
 
-eqx.tree_serialise_leaves("kira-experiment3.eqx", kira)
+eqx.tree_serialise_leaves("kira-experiment-mkvh-4.eqx", kira)
