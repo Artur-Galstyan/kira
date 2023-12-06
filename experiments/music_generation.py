@@ -1,21 +1,20 @@
 import math
+import pathlib
+import pickle
 import sys
 from typing import Callable, Optional
 
-import pathlib
+import equinox as eqx
+import jax
 import jaxtyping as jt
 import mido
 import numpy as np
-import torch.utils.data.dataset as dataset
-from jaxtyping import Array
-from torch.utils.data.dataloader import DataLoader
-import pickle
-from tqdm import tqdm
 import pandas as pd
-import equinox as eqx
-import jax
+import torch.utils.data.dataset as dataset
 from icecream import ic
+from jaxtyping import Array
 from tinyshakespeareloader.hamlet import get_data
+from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
 import wandb
@@ -54,7 +53,7 @@ class GameMusicData:
     train_dataloader: DataLoader
     test_dataloader: DataLoader
     vocab_size: int | None
-    encode: Callable[[str], Array] | None
+    encode: Callable[[str], int] | None
     decode: Callable[[Array], str] | None
 
     def __init__(
@@ -62,7 +61,7 @@ class GameMusicData:
         train_dataloader: DataLoader,
         test_dataloader: DataLoader,
         vocab_size: int | None,
-        encode: Callable[[str], Array] | None,
+        encode: Callable[[str], int] | None,
         decode: Callable[[Array], str] | None,
     ):
         self.train_dataloader = train_dataloader
@@ -77,12 +76,14 @@ def get_data(
     max_seq_len: int,
     shuffle: bool,
     train_ratio=0.9,
+    midis_path: str = "music_data/vg_music",
+    pickle_path: str = "data.pkl",
 ) -> GameMusicData:
-    if pathlib.Path("data.pkl").exists():
+    if pathlib.Path(pickle_path).exists():
         with open("data.pkl", "rb") as f:
             data = pickle.load(f)
     else:
-        path_to_midis = pathlib.Path("music_data/vg_music")
+        path_to_midis = pathlib.Path(midis_path)
         midis = list(path_to_midis.glob("*.mid"))
         data = []
         for midi in tqdm(midis):
@@ -102,11 +103,11 @@ def get_data(
     char_to_idx = {ch: i for i, ch in enumerate(chars)}
     idx_to_char = {i: ch for i, ch in enumerate(chars)}
 
-    def encode(string: str) -> Array:
+    def encode(string: str) -> int:
         return char_to_idx[string]
 
     def decode(index: Array) -> str:
-        return idx_to_char[index]
+        return idx_to_char[index[0]]
 
     encoder = encode
     decoder = decode
@@ -157,6 +158,21 @@ def quantize_velocity(velocity: int) -> str:
         return "F"
 
 
+def dequantize_velocity(velocity_token: str) -> int:
+    if velocity_token == "OFF":
+        return 0
+    elif velocity_token == "PP":
+        return np.random.randint(40)
+    elif velocity_token == "P":
+        return np.random.randint(40, 60)
+    elif velocity_token == "MP":
+        return np.random.randint(60, 80)
+    elif velocity_token == "MF":
+        return np.random.randint(80, 100)
+    else:
+        return 110
+
+
 def quantize_duration(n_16th: int) -> str:
     if n_16th <= 1:
         return "16TH"
@@ -168,6 +184,19 @@ def quantize_duration(n_16th: int) -> str:
         return "HALF"
     else:
         return "WHOLE"
+
+
+def dequantize_duration(duration_token: str) -> int:
+    if duration_token == "16TH":
+        return 1
+    elif duration_token == "8TH":
+        return 2
+    elif duration_token == "QUARTER":
+        return 4
+    elif duration_token == "HALF":
+        return 8
+    else:
+        return 16
 
 
 def midi_to_text(midifile) -> list[str]:
@@ -199,8 +228,52 @@ def midi_to_text(midifile) -> list[str]:
     return text_representation
 
 
+def text_to_midi(notes: list[str]) -> list[tuple[int, int, int]]:
+    ticks_per_beat = 480
+    ticks_per_16th = ticks_per_beat / 4
+    midi_representation = []
+
+    for note in notes:
+        if note.endswith("IMMEDIATE"):
+            _, note, velocity_token, _ = note.split("_")
+            velocity = dequantize_velocity(velocity_token)
+
+            time = 0
+        elif note.startswith("NOTE"):
+            _, note, velocity_token, duration_token = note.split("_")
+            velocity = dequantize_velocity(velocity_token)
+            n_16th = dequantize_duration(duration_token)
+            time = n_16th * ticks_per_16th
+        else:
+            _, duration_token = note.split("_")
+            note = 0
+            velocity = 0
+            n_16th = dequantize_duration(duration_token)
+            time = n_16th * ticks_per_16th
+
+        midi_representation.append((int(note), int(velocity), int(time)))
+
+    return midi_representation
+
+
+def midi_representation_to_midi_file(
+    midi_representation: list[tuple[int, int, int]], output_path: str
+):
+    mid = mido.MidiFile()
+    track = mido.MidiTrack()
+    mid.tracks.append(track)
+
+    for note, velocity, time in midi_representation:
+        # print(note, velocity, time, type(note), type(velocity), type(time))
+        track.append(mido.Message("note_on", note=note, velocity=velocity, time=time))
+
+    mid.save(output_path)
+
+
 max_seq_len = 128
 batch_size = 128
+
+print("Loading data...")
 game_music_data = get_data(batch_size=batch_size, max_seq_len=max_seq_len, shuffle=True)
 
 
@@ -222,26 +295,27 @@ key_seed = 0
 n_epochs = 1
 key = jax.random.PRNGKey(key_seed)
 
-wandb.init(
-    name="music-generation-experiment3",
-    project="kira",
-    config={
-        "n_epochs": n_epochs,
-        "n_dims": n_dims,
-        "n_embd": n_embd,
-        "num_heads": num_heads,
-        "n_layers": n_layers,
-        "max_seq_len": max_seq_len,
-        "batch_size": batch_size,
-        "learning_rate": learning_rate,
-        "max_new_tokens": max_new_tokens,
-        "early_stop": early_stop,
-        "num_query_heads": num_query_heads,
-        "num_kv_heads": num_kv_heads,
-        "key_seed": key_seed,
-    },
-)
-
+# wandb.init(
+#     name="music-generation-experiment3",
+#     project="kira",
+#     config={
+#         "n_epochs": n_epochs,
+#         "n_dims": n_dims,
+#         "n_embd": n_embd,
+#         "num_heads": num_heads,
+#         "n_layers": n_layers,
+#         "max_seq_len": max_seq_len,
+#         "batch_size": batch_size,
+#         "learning_rate": learning_rate,
+#         "max_new_tokens": max_new_tokens,
+#         "early_stop": early_stop,
+#         "num_query_heads": num_query_heads,
+#         "num_kv_heads": num_kv_heads,
+#         "key_seed": key_seed,
+#     },
+# )
+print("Done")
+print("Building model...")
 kira = Kira(
     n_dims=n_dims,
     n_embd=n_embd,
@@ -253,16 +327,39 @@ kira = Kira(
     n_layers=n_layers,
 )
 
-for epoch in tqdm(range(n_epochs)):
-    key, subkey = jax.random.split(key)
-    kira = train(
-        train_dataloader,
-        test_dataloader,
-        learning_rate,
-        kira,
-        subkey,
-        early_stop=early_stop,
-        wandb_client=wandb,
-    )
+kira = eqx.tree_deserialise_leaves("../weights/kira-music-generation1.eqx", kira)
 
-eqx.tree_serialise_leaves("kira-music-generation1.eqx", kira)
+# for epoch in tqdm(range(n_epochs)):
+#     key, subkey = jax.random.split(key)
+#     kira = train(
+#         train_dataloader,
+#         test_dataloader,
+#         learning_rate,
+#         kira,
+#         subkey,
+#         early_stop=early_stop,
+#         wandb_client=wandb,
+#     )
+
+# eqx.tree_serialise_leaves("kira-music-generation1.eqx", kira)
+print("Done")
+
+print("Generating text...")
+decoded_tokens, tokens = generate_text(
+    kira,
+    max_seq_len,
+    max_new_tokens,
+    game_music_data.decode,
+    game_music_data.vocab_size,
+    print_to_console=False,
+    random_key_seed=22,
+)
+print("Done")
+
+print("Generating midi representation...")
+midi_representation = text_to_midi(decoded_tokens)
+print("Done")
+
+print("Generating midi file...")
+midi_representation_to_midi_file(midi_representation, "generated.mid")
+print("Done")
