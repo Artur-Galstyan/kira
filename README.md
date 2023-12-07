@@ -4,4 +4,4 @@ _Kira_ is an LLM I'm trying to implement using Equinox (which is built on top of
 
 ## Current Status
 
-Currently, I'm testing this LLM on the TinyShakespeare dataset. So far, I get to a loss of `~1.9`.
+Currently, I'm testing this LLM on the TinyShakespeare dataset. So far, I get to a loss of `~1.3`.
