@@ -41,7 +41,7 @@ def dot_product_attention_weights(
                 f"{key.shape[0]}). Got {mask.shape}."
             )
         logits = jnp.where(mask, logits, jnp.finfo(logits.dtype).min)
-
+    
     return jax.nn.softmax(logits, axis=-1)  # pyright: ignore
 
 

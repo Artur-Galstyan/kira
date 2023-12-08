@@ -1,10 +1,12 @@
 [tool.poetry]
-name = "kira"
-version = "0.1.0"
+name = "kira_llm"
+version = "0.1.1"
 description = ""
 authors = ["Artur A. Galstyan <galstyan.artu@gmail.com>"]
 license = "MIT"
 readme = "README.md"
+packages=[{include="kira"}]
+exclude=["experiments/*", "wandb/*"]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.13"
