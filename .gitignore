@@ -162,7 +162,6 @@ cython_debug/
 weights/
 experiments/music_data/
 experiments/data.pkl
-experiments/
 wandb/
 
 .DS_Store

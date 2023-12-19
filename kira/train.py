@@ -1,5 +1,5 @@
 import functools as ft
-from typing import Any, Optional
+from typing import Any, Optional, Callable
 
 import equinox as eqx
 import jax
@@ -20,6 +20,7 @@ def train(
     key: PRNGKeyArray,
     early_stop: int | None = None,
     wandb_client: Any | None = None,
+    callback: Callable[[int, Kira, Any], None] | None = None,
 ) -> Kira:
     optimizer = optax.adamw(learning_rate=learning_rate)
     opt_state = optimizer.init(eqx.filter(kira, eqx.is_inexact_array))
@@ -52,6 +53,8 @@ def train(
                 wandb_client.log({"eval_loss": eval_loss})
         if early_stop is not None and i > early_stop:
             break
+        if callback is not None:
+            callback(i, kira, wandb_client)
     return kira
 
 
