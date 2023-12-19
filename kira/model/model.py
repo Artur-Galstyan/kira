@@ -81,6 +81,7 @@ class Block(eqx.Module):
             query_multihead_dim=num_query_heads,
             kv_multihead_dim=num_kv_heads,
             state_length=max_seq_len,
+            mask="causal",
             key=subkeys[0],
         )
 
