@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Int, PRNGKeyArray
 from kira.model.mha import MultiheadAttention
+from kira.model.rope_embeddings import RotaryPositionalEmbedding
 
 
 class RMSNorm(eqx.Module):
@@ -37,6 +38,9 @@ class Block(eqx.Module):
     num_query_heads: int = eqx.field(static=True)
     num_kv_heads: int = eqx.field(static=True)
 
+    key_rope_embeddings: RotaryPositionalEmbedding
+    query_rope_embeddings: RotaryPositionalEmbedding
+
     def __init__(
         self,
         n_embd: int,
@@ -58,6 +62,14 @@ class Block(eqx.Module):
         self.num_heads = num_heads
         self.num_query_heads = num_query_heads
         self.num_kv_heads = num_kv_heads
+        self.query_rope_embeddings = RotaryPositionalEmbedding(
+            embedding_size=n_embd, max_seq_len=max_seq_len
+        )
+
+        self.key_rope_embeddings = RotaryPositionalEmbedding(
+            embedding_size=n_embd, max_seq_len=max_seq_len
+        )
+
         self.mha_attention = MultiheadAttention(
             num_heads=num_heads,
             query_size=n_embd,
@@ -87,10 +99,21 @@ class Block(eqx.Module):
         key: Optional[PRNGKeyArray],
         **kwargs,
     ):
+        def process_heads(query_heads, key_heads, value_heads):
+            query_heads = jax.vmap(self.query_rope_embeddings, in_axes=1, out_axes=1)(
+                query_heads
+            )
+            key_heads = jax.vmap(self.key_rope_embeddings, in_axes=1, out_axes=1)(
+                key_heads
+            )
+
+            return query_heads, key_heads, value_heads
+
         mha = self.mha_attention(
             query=self.rms_norm(x),
             key_=self.rms_norm(x),
             value=self.rms_norm(x),
+            process_heads=process_heads,
         )
         x = mha + x
         inference = True if key is None else False

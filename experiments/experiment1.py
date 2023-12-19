@@ -9,10 +9,12 @@ from kira.generate import generate_text
 from kira.model.model import Kira
 from kira.train import train
 
+
 def checkpoint_callback(it: int, kira: Kira, wandb_client: wandb) -> None:
     if it % 1000 == 0:
         eqx.tree_serialise_leaves(f"kira-experiment-mkvh-checkpoint-{it}.eqx", kira)
         wandb_client.save(f"kira-experiment-mkvh-checkpoint-{it}.eqx")
+
 
 max_seq_len = 128
 batch_size = 128

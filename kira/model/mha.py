@@ -1,7 +1,7 @@
 import functools as ft
 import math
 import warnings
-from typing import Literal, Optional, Tuple, Union, overload
+from typing import Literal, Optional, Tuple, Union, overload, Callable
 
 import equinox as eqx
 import jax
@@ -399,6 +399,20 @@ class MultiheadAttention(eqx.Module):
         key: Optional[PRNGKeyArray] = None,
         inference: Optional[bool] = None,
         deterministic: Optional[bool] = None,
+        process_heads: Optional[
+            Callable[
+                [
+                    Float[Array, "query_size num_heads qk_size"],
+                    Float[Array, "key_size num_heads qk_size"],
+                    Float[Array, "value_size num_heads vo_size"],
+                ],
+                Tuple[
+                    Float[Array, "query_size num_heads qk_size"],
+                    Float[Array, "key_size num_heads qk_size"],
+                    Float[Array, "value_size num_heads vo_size"],
+                ],
+            ]
+        ] = None,
     ) -> Union[
         Float[Array, "q_seq o_size"], Tuple[Float[Array, "q_seq o_size"], State]
     ]:
@@ -458,6 +472,25 @@ class MultiheadAttention(eqx.Module):
         )
         key_heads = self._new_project(self.key_proj, self.kv_multihead_dim, key_)
         value_heads = self._new_project(self.value_proj, self.kv_multihead_dim, value)
+
+        if process_heads is not None:
+            q_shape, k_shape, v_shape = (
+                query_heads.shape,
+                key_heads.shape,
+                value_heads.shape,
+            )
+            query_heads, key_heads, value_heads = process_heads(
+                query_heads, key_heads, value_heads
+            )
+
+            if (
+                query_heads.shape != q_shape
+                or key_heads.shape != k_shape
+                or value_heads.shape != v_shape
+            ):
+                raise ValueError(
+                    "process_heads must not change the shape of the heads."
+                )
 
         if state is None:
             causal_mask_offset = 0
