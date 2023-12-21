@@ -81,7 +81,6 @@ class Block(eqx.Module):
             query_multihead_dim=num_query_heads,
             kv_multihead_dim=num_kv_heads,
             state_length=max_seq_len,
-            mask="causal",
             key=subkeys[0],
         )
 
@@ -115,6 +114,7 @@ class Block(eqx.Module):
             key_=self.rms_norm(x),
             value=self.rms_norm(x),
             process_heads=process_heads,
+            mask="causal",
         )
         x = mha + x
         inference = True if key is None else False
