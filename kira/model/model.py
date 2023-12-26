@@ -6,6 +6,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Int, PRNGKeyArray
 from kira.model.mha import MultiheadAttention
 from kira.model.rope_embeddings import RotaryPositionalEmbedding
+from functools import partial
 
 
 class RMSNorm(eqx.Module):
@@ -25,7 +26,7 @@ class RMSNorm(eqx.Module):
         return output * self.weight
 
 
-class Block(eqx.Module):
+class Block(eqx.nn.StatefulLayer):
     mha_attention: MultiheadAttention
     rms_norm: RMSNorm
     feedforward: eqx.nn.MLP
@@ -95,6 +96,7 @@ class Block(eqx.Module):
     def __call__(
         self,
         x: Int[Array, "max_seq_len input_dim"],
+        state: Optional[eqx.nn.State] = None,
         *,
         key: Optional[PRNGKeyArray],
         **kwargs,
@@ -109,13 +111,18 @@ class Block(eqx.Module):
 
             return query_heads, key_heads, value_heads
 
-        mha = self.mha_attention(
+        mha_partial = partial(
+            self.mha_attention,
+            process_heads=process_heads,
             query=self.rms_norm(x),
             key_=self.rms_norm(x),
             value=self.rms_norm(x),
-            process_heads=process_heads,
             mask="causal",
         )
+        if state is not None:
+            mha, state = mha_partial(state=state, key=key)
+        else:
+            mha = mha_partial(key=key)
         x = mha + x
         inference = True if key is None else False
         d_key1 = None
@@ -126,7 +133,7 @@ class Block(eqx.Module):
         ff = jax.vmap(self.feedforward)(self.rms_norm(x))
         x = ff + x
         x = self.dropout(x, key=d_key2, inference=inference)
-        return x
+        return x, state
 
 
 class Kira(eqx.Module):
@@ -190,11 +197,16 @@ class Kira(eqx.Module):
     def __call__(
         self,
         x: Int[Array, "seq_len"],
+        state: Optional[eqx.nn.State] = None,
+        *,
         key: Optional[PRNGKeyArray],
     ):
         x = jax.vmap(self.input_embedding)(x)
-        x = self.blocks(x, key=key)
+        x, state = self.blocks(x, state, key=key)
         x = self.rms_norm(x)
         x = jax.vmap(self.output)(x)
 
-        return x
+        if state is not None:
+            return x, state
+        else:
+            return x

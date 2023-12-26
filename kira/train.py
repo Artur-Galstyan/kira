@@ -20,7 +20,8 @@ def train(
     key: PRNGKeyArray,
     early_stop: int | None = None,
     wandb_client: Any | None = None,
-    callback: Callable[[int, Kira, Any], None] | None = None,
+    callback: Callable[[int, Kira, Any, int], None] | None = None,
+    experiment: int = 7,
 ) -> Kira:
     optimizer = optax.adamw(learning_rate=learning_rate)
     opt_state = optimizer.init(eqx.filter(kira, eqx.is_inexact_array))
@@ -54,7 +55,7 @@ def train(
         if early_stop is not None and i > early_stop:
             break
         if callback is not None:
-            callback(i, kira, wandb_client)
+            callback(i, kira, wandb_client, experiment)
     return kira
 
 
@@ -79,7 +80,7 @@ def loss_fn(
     labels: Int[Array, "batch_size max_seq_len n_dims"],
     key: Optional[PRNGKeyArray],
 ) -> Array:
-    partial_kira = ft.partial(kira, key=key)
+    partial_kira = ft.partial(kira, state=None, key=key)
     logits = eqx.filter_vmap(partial_kira)(x)
     return jnp.mean(optax.softmax_cross_entropy_with_integer_labels(logits, labels))
 
