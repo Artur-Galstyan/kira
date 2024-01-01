@@ -8,6 +8,7 @@ import wandb
 from kira.generate import generate_text
 from kira.model.model import Kira
 from kira.train import train
+import sys
 
 
 def checkpoint_callback(
@@ -27,7 +28,12 @@ train_dataloader, test_dataloader = (
     tinyshakespeare.train_dataloader,
     tinyshakespeare.test_dataloader,
 )
-
+x, y = next(iter(train_dataloader))
+print(x.shape)
+print(y.shape)
+print(x)
+print(y)
+sys.exit(0)
 experiment = 7
 n_dims = tinyshakespeare.vocab_size if tinyshakespeare.vocab_size else 256
 n_embd = 384

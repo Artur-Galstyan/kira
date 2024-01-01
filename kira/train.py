@@ -34,10 +34,10 @@ def train(
         leave=False,
     )
     eval_loss_tqdm = tqdm(
-        total=total, desc="eval loss", position=1, bar_format="{desc}", leave=False
+        total=total, desc="eval loss", position=2, bar_format="{desc}", leave=False
     )
     for i, (x, y) in tqdm(
-        enumerate(train_dataloader), desc="train", position=0, leave=False
+        enumerate(train_dataloader), desc="train", position=1, leave=False
     ):
         x = jnp.array(x)
         y = jnp.array(y)
