@@ -142,7 +142,7 @@ def training(
         )
 
         weights_path = pathlib.Path(__file__).parent.parent.absolute() / "weights"
-        kira = eqx.tree_deserialise_leaves(
+        eqx.tree_serialise_leaves(
             weights_path / f"kira-chess-weights-{epoch}.eqx", kira
         )
         wandb.save(weights_path / f"kira-chess-weights-{epoch}.eqx")
