@@ -8,8 +8,7 @@ elegant design.
 The role of _Kira_ is to serve as a baseline transformer implementation, which
 is very easy to understand and extend.
 
-_Kira_ itself does _not_ yet allow for KV caching (although there is a branch in
-which I'm trying to get it to work). It does however allow you to interpolate
+_Kira_ now allows for KV caching. It also allows you to interpolate
 between Multi-Query Attention (MQA) and "regular" Multi-Head Attention (MHA).
 This is different from other MHA implementations, where most of the time you can
 only set the number of heads and that's it. _Kira_ offers more flexibility in
