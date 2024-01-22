@@ -18,9 +18,9 @@ def main():
     )
 
     n_dims = tinyshakespeare.vocab_size if tinyshakespeare.vocab_size else 256
-    n_embd = 128  # 384
+    n_embd = 32  # 384
     learning_rate = 3e-4
-    num_heads = 3  # 6
+    num_heads = 2  # 6
     query_multihead_dim = num_heads
     kv_multihead_dim = 2
     n_layers = 1  # 6

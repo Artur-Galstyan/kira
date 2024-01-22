@@ -9,26 +9,10 @@ from kira.model.rope_embeddings import RotaryPositionalEmbedding
 from functools import partial
 
 
-class RMSNorm(eqx.Module):
-    weight: Array
-    eps: float
-
-    def __init__(self, dim: int, eps: float = 1e-6):
-        super().__init__()
-        self.eps = eps
-        self.weight = jnp.ones(dim)
-
-    def _norm(self, x: Array):
-        return x * jax.lax.rsqrt(jnp.mean(x**2, axis=-1, keepdims=True) + self.eps)
-
-    def __call__(self, x: Array) -> Array:
-        output = self._norm(x)
-        return output * self.weight
-
 
 class Block(eqx.nn.StatefulLayer):
     mha_attention: MultiheadAttention
-    rms_norm: RMSNorm
+    rms_norm: eqx.nn.RMSNorm
     feedforward: eqx.nn.MLP
     dropout: eqx.nn.Dropout
 
@@ -85,7 +69,7 @@ class Block(eqx.nn.StatefulLayer):
             key=subkeys[0],
         )
 
-        self.rms_norm = RMSNorm(dim=n_embd)
+        self.rms_norm = eqx.nn.RMSNorm(shape=n_embd)
 
         self.feedforward = eqx.nn.MLP(
             n_embd, out_size=n_embd, width_size=width_size, depth=depth, key=subkeys[1]
@@ -114,9 +98,9 @@ class Block(eqx.nn.StatefulLayer):
         mha_partial = partial(
             self.mha_attention,
             process_heads=process_heads,
-            query=self.rms_norm(x),
-            key_=self.rms_norm(x),
-            value=self.rms_norm(x),
+            query=jax.vmap(self.rms_norm)(x),
+            key_=jax.vmap(self.rms_norm)(x),
+            value=jax.vmap(self.rms_norm)(x),
             mask="causal",
         )
         if state is not None:
@@ -130,7 +114,7 @@ class Block(eqx.nn.StatefulLayer):
         if not inference and key is not None:
             key, d_key1, d_key2 = jax.random.split(key, 3)
         x = self.dropout(x, key=d_key1, inference=inference)
-        ff = jax.vmap(self.feedforward)(self.rms_norm(x))
+        ff = jax.vmap(self.feedforward)(jax.vmap(self.rms_norm)(x))
         x = ff + x
         x = self.dropout(x, key=d_key2, inference=inference)
         return x, state
@@ -151,7 +135,7 @@ class Kira(eqx.Module):
 
     output: eqx.nn.Linear
 
-    rms_norm: RMSNorm
+    rms_norm: eqx.nn.RMSNorm
 
     def __init__(
         self,
@@ -191,7 +175,7 @@ class Kira(eqx.Module):
                 for i in range(n_layers)
             ]
         )
-        self.rms_norm = RMSNorm(dim=n_embd)
+        self.rms_norm = eqx.nn.RMSNorm(shape=n_embd)
         self.output = eqx.nn.Linear(n_embd, n_dims, key=subkeys[-1])
 
     def __call__(
@@ -203,7 +187,7 @@ class Kira(eqx.Module):
     ):
         x = jax.vmap(self.input_embedding)(x)
         x, state = self.blocks(x, state, key=key)
-        x = self.rms_norm(x)
+        x = jax.vmap(self.rms_norm)(x)
         x = jax.vmap(self.output)(x)
 
         if state is not None:
