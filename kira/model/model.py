@@ -81,6 +81,7 @@ class Block(eqx.nn.StatefulLayer):
         self,
         x: Int[Array, "max_seq_len input_dim"],
         state: Optional[eqx.nn.State] = None,
+        mask: Optional[str] = "causal",
         *,
         key: Optional[PRNGKeyArray],
         **kwargs,
@@ -101,7 +102,7 @@ class Block(eqx.nn.StatefulLayer):
             query=jax.vmap(self.rms_norm)(x),
             key_=jax.vmap(self.rms_norm)(x),
             value=jax.vmap(self.rms_norm)(x),
-            mask="causal",
+            mask=mask,
         )
         if state is not None:
             mha, state = mha_partial(state=state, key=key)
@@ -182,11 +183,12 @@ class Kira(eqx.Module):
         self,
         x: Int[Array, "seq_len"],
         state: Optional[eqx.nn.State] = None,
+        mask: Optional[str] = "causal",
         *,
         key: Optional[PRNGKeyArray],
     ):
         x = jax.vmap(self.input_embedding)(x)
-        x, state = self.blocks(x, state, key=key)
+        x, state = self.blocks(x, state, mask, key=key)
         x = jax.vmap(self.rms_norm)(x)
         x = jax.vmap(self.output)(x)
 

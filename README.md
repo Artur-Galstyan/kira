@@ -19,6 +19,9 @@ embeddings) will soon be integrated in the main Equinox repository at which
 point _Kira_'s MHA implementation will be replaced with the built-in Equinox's
 MHA.
 
+_Kira_ can also be used as an encoder. Simply pass `mask=None` when you call _Kira_ 
+and there will be no masking in the MHA (i.e. making it an encoder).
+
 ---
 
 To get started with _Kira_, you can either install it with
