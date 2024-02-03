@@ -1,7 +1,7 @@
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from jaxtyping import PRNGKeyArray, Array, Float
+from jaxtyping import PRNGKeyArray, Array, Float, Int
 from typing import Union
 import math
 from dataclasses import dataclass
@@ -35,40 +35,56 @@ class ModelArgs:
             )
 
 
-def discretize(A: Array, B: Array, C: Array, step):
-    N, _ = A.shape
-    I = jnp.eye(N)
-    inv = jnp.linalg.inv(I - (step / 2) * A)
-    B_ = (inv * step) @ B
-    A_ = inv @ (I + (step / 2) * A)
-
-    return A_, B_, C
-
-
 class Mamba(eqx.Module):
     model_args: ModelArgs = eqx.field(static=True)
 
-    embedding: eqx.nn.Embedding
     layers: eqx.nn.Sequential
+
+    norm_f: eqx.nn.RMSNorm
+
+    # lm_head: eqx.nn.Linear
+    # embedding: eqx.nn.Embedding
+
+    shared_emb_lm_head: eqx.nn.Shared
 
     def __init__(self, model_args: ModelArgs, *, key: PRNGKeyArray):
         self.model_args = model_args
         key, *subkeys = jax.random.split(key, 1 + model_args.n_layer)
-        self.embedding = eqx.nn.Embedding(
+        embedding = eqx.nn.Embedding(
             model_args.vocab_size, model_args.d_model, key=subkeys[0]
         )
 
+        self.layers = eqx.nn.Sequential(
+            [
+                ResidualBlock(model_args, key=subkeys[i])
+                for i in range(model_args.n_layer)
+            ],
+        )
 
-class ResidualBlock(eqx.Module):
-    pass
+        self.norm_f = eqx.nn.RMSNorm(model_args.d_model)
+        lm_head = eqx.nn.Linear(
+            model_args.d_model,
+            model_args.vocab_size,
+            use_bias=False,
+            key=subkeys[-1],
+        )
+        where = lambda embed_and_lin: embed_and_lin[1].weight  # noqa
+        get = lambda embed_and_lin: embed_and_lin[0].weight  # noqa
+        self.shared_emb_lm_head = eqx.nn.Shared(
+            (embedding, lm_head), where=where, get=get
+        )
+
+    def __call__(self, x: Int[Array, "seq_len"]) -> Float[Array, "seq_len vocab_size"]:
+        embedding, linear = self.shared_emb_lm_head()
+        x = jax.vmap(embedding)(x)
+        x = self.layers(x)
+        x = jax.vmap(self.norm_f)(x)
+        logits = jax.vmap(linear)(x)
+        return logits
 
 
 class MambaBlock(eqx.Module):
-    d_model: int = eqx.field(static=True)
-    d_inner: int = eqx.field(static=True)
-    d_conv: int = eqx.field(static=True)
-    dt_rank: int = eqx.field(static=True)
-    d_state: int = eqx.field(static=True)
+    model_args: ModelArgs = eqx.field(static=True)
 
     in_proj: eqx.nn.Linear
     conv1d: eqx.nn.Conv1d
@@ -83,16 +99,11 @@ class MambaBlock(eqx.Module):
 
     def __init__(
         self,
-        d_model: int,
-        d_inner: int,
-        d_conv: int,
-        dt_rank: int,
-        d_state: int,
-        use_linear_bias: bool,
-        use_conv_bias: bool,
+        model_args: ModelArgs,
         *,
         key: PRNGKeyArray,
     ):
+        self.model_args = model_args
         (
             key,
             linear_key,
@@ -101,40 +112,45 @@ class MambaBlock(eqx.Module):
             dt_proj_key,
             out_proj_key,
         ) = jax.random.split(key, 6)
-        self.d_model = d_model
-        self.d_inner = d_inner
-        self.d_conv = d_conv
-        self.dt_rank = dt_rank
-        self.d_state = d_state
 
         self.in_proj = eqx.nn.Linear(
-            d_model,
-            d_inner * 2,
-            use_bias=use_linear_bias,
+            model_args.d_model,
+            model_args.d_inner * 2,
+            use_bias=model_args.bias,
             key=linear_key,
         )
 
         self.conv1d = eqx.nn.Conv1d(
-            in_channels=d_inner,
-            out_channels=d_inner,
-            kernel_size=d_conv,
-            use_bias=use_conv_bias,
-            groups=d_inner,
-            padding=d_conv - 1,
+            in_channels=model_args.d_inner,
+            out_channels=model_args.d_inner,
+            kernel_size=model_args.d_conv,
+            use_bias=model_args.conv_bias,
+            groups=model_args.d_inner,
+            padding=model_args.d_conv - 1,
             key=conv1d_key,
         )
 
         self.x_proj = eqx.nn.Linear(
-            d_inner, dt_rank + d_state * 2, use_bias=False, key=x_proj_key
+            model_args.d_inner,
+            model_args.dt_rank + model_args.d_state * 2,
+            use_bias=False,
+            key=x_proj_key,
         )
 
-        self.dt_proj = eqx.nn.Linear(dt_rank, d_inner, use_bias=True, key=dt_proj_key)
+        self.dt_proj = eqx.nn.Linear(
+            model_args.dt_rank, model_args.d_inner, use_bias=True, key=dt_proj_key
+        )
 
-        A = jnp.repeat(jnp.arange(1, d_state + 1), d_inner).reshape(d_inner, d_state)
+        A = jnp.repeat(
+            jnp.arange(1, model_args.d_state + 1), model_args.d_inner
+        ).reshape(model_args.d_inner, model_args.d_state)
         self.A_log = jnp.log(A)
-        self.D = jnp.ones(d_inner)
+        self.D = jnp.ones(model_args.d_inner)
         self.out_proj = eqx.nn.Linear(
-            d_inner, d_model, use_bias=use_linear_bias, key=x_proj_key
+            model_args.d_inner,
+            model_args.d_model,
+            use_bias=model_args.bias,
+            key=x_proj_key,
         )
 
     def __call__(self, x: Array):
@@ -162,7 +178,8 @@ class MambaBlock(eqx.Module):
         D = self.D
 
         x_dbl = jax.vmap(self.x_proj)(x)
-        delta, B, C = jnp.split(x_dbl, 3, axis=-1)
+        split_indices = [self.model_args.dt_rank, self.model_args.dt_rank + n]
+        delta, B, C = jnp.split(x_dbl, split_indices, axis=-1)
         delta = jax.nn.softplus(jax.vmap(self.dt_proj)(delta))
 
         y = self.selective_scan(x, delta, A, B, C, D)
@@ -177,9 +194,12 @@ class MambaBlock(eqx.Module):
 
         x = jnp.zeros(shape=(d_in, n))
 
+        print(f"{x.shape=}")
+
         def step(x, i):
             x = delta_A[i] * x + delta_B_u[i]
-            y = jnp.einsum("d n,n ->d", x, C[:, i])
+
+            y = jnp.einsum("d n,n -> d", x, C[i, :])
             return x, y
 
         _, ys = jax.lax.scan(step, x, jnp.arange(L))
@@ -188,21 +208,30 @@ class MambaBlock(eqx.Module):
         return ys
 
 
-class Mamba(eqx.Module):
-    pass
+class ResidualBlock(eqx.Module):
+    mamba_block: MambaBlock
+    model_args: ModelArgs = eqx.field(static=True)
+    rns_norm: eqx.nn.RMSNorm
+
+    def __init__(self, model_args: ModelArgs, *, key: PRNGKeyArray):
+        self.model_args = model_args
+        self.mamba_block = MambaBlock(
+            model_args=model_args,
+            key=key,
+        )
+        self.rns_norm = eqx.nn.RMSNorm(model_args.d_model)
+
+    def __call__(self, x: Array, *, key: PRNGKeyArray = None) -> Array:
+        return self.mamba_block(jax.vmap(self.rns_norm)(x)) + x
 
 
 if __name__ == "__main__":
-    block = MambaBlock(
+    model_args = ModelArgs(
         d_model=512,
-        d_inner=1024,
-        d_conv=4,
-        dt_rank=3,
-        d_state=3,
-        use_linear_bias=True,
-        use_conv_bias=True,
-        key=jax.random.PRNGKey(0),
+        n_layer=6,
+        vocab_size=256,
     )
-    x = jnp.ones((3, 512))
-    block(x)
-    print("done")
+    key = jax.random.PRNGKey(0)
+    mamba = Mamba(model_args, key=key)
+    x = jnp.ones((8), dtype=jnp.int32)
+    print(mamba(x).shape)

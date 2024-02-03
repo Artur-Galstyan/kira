@@ -322,6 +322,7 @@ class MambaBlock(nn.Module):
         # Note that the below is sequential, while the official implementation does a much faster parallel scan that
         # is additionally hardware-aware (like FlashAttention).
         x = torch.zeros((b, d_in, n), device=deltaA.device)
+
         ys = []
         for i in range(l):
             x = deltaA[:, i] * x + deltaB_u[:, i]
@@ -349,19 +350,12 @@ class RMSNorm(nn.Module):
 
 
 if __name__ == "__main__":
-    args = ModelArgs(
+    model_args = ModelArgs(
         d_model=512,
         n_layer=6,
-        vocab_size=10000,
-        d_state=16,
-        expand=2,
-        dt_rank=3,
-        d_conv=4,
-        pad_vocab_size_multiple=8,
-        conv_bias=True,
-        bias=False,
+        vocab_size=256,
     )
-    block = MambaBlock(args)
-    x = torch.ones((1, 3, 512))
-    block(x)
-    print("done")
+
+    mamba = Mamba(model_args)
+    x = torch.ones((1, 8), dtype=torch.int32)
+    print(mamba(x).shape)
