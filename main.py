@@ -1,3 +1,4 @@
+import json
 import equinox as eqx
 import jax
 from kira.model.mamba import Mamba, ModelArgs
@@ -5,11 +6,12 @@ from tinyshakespeareloader.hamlet import get_data
 
 from kira.model.model import Kira
 from kira.train import train
+import wandb
 
 
 def main():
     max_seq_len = 8
-    batch_size = 4
+    batch_size = 64
     tinyshakespeare = get_data(
         batch_size=batch_size, block_size=max_seq_len, shuffle=True
     )
@@ -24,7 +26,7 @@ def main():
     num_heads = 2  # 6
     query_multihead_dim = num_heads
     kv_multihead_dim = 2
-    n_layers = 2  # 6
+    n_layers = 6  # 6
     max_new_tokens = 2000
     key = jax.random.PRNGKey(0)
 
@@ -43,6 +45,12 @@ def main():
         n_layer=n_layers,
         vocab_size=n_dims,
     )
+
+    wandb.init(
+        project="mamba",
+        name="mamba standard",
+        config=model_args.__dict__,
+    )
     mamba = Mamba(model_args=model_args, key=key)
 
     key, subkey = jax.random.split(key)
@@ -53,6 +61,7 @@ def main():
         mamba,
         subkey,
         early_stop=10000,
+        wandb_client=wandb,
     )
 
 
