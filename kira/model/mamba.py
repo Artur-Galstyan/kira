@@ -38,7 +38,6 @@ class ModelArgs:
 
 class Mamba(eqx.Module):
     model_args: ModelArgs = eqx.field(static=True)
-
     layers: eqx.nn.Sequential
 
     norm_f: eqx.nn.RMSNorm
