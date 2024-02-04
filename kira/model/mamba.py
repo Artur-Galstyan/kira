@@ -6,7 +6,7 @@ from typing import Union
 import math
 from dataclasses import dataclass
 
-from numpy import who
+from kira.model.rope_embeddings import RotaryPositionalEmbedding
 
 
 @dataclass
@@ -21,6 +21,7 @@ class ModelArgs:
     pad_vocab_size_multiple: int = 8
     conv_bias: bool = True
     bias: bool = False
+    max_seq_len: int = 8
 
     def __post_init__(self):
         self.d_inner = int(self.expand * self.d_model)
@@ -42,10 +43,9 @@ class Mamba(eqx.Module):
 
     norm_f: eqx.nn.RMSNorm
 
-    # lm_head: eqx.nn.Linear
-    # embedding: eqx.nn.Embedding
-
     shared_emb_lm_head: eqx.nn.Shared
+
+    rotary_embeddings: RotaryPositionalEmbedding
 
     def __init__(self, model_args: ModelArgs, *, key: PRNGKeyArray):
         self.model_args = model_args
@@ -74,9 +74,20 @@ class Mamba(eqx.Module):
             (embedding, lm_head), where=where, get=get
         )
 
-    def __call__(self, x: Int[Array, "seq_len"]) -> Float[Array, "seq_len vocab_size"]:
+        self.rotary_embeddings = RotaryPositionalEmbedding(
+            embedding_size=model_args.d_model, max_seq_len=model_args.max_seq_len
+        )
+
+    def __call__(
+        self,
+        x: Int[Array, "seq_len"],
+        *,
+        state: eqx.nn.State = None,
+        key: PRNGKeyArray = None,
+    ) -> Float[Array, "seq_len vocab_size"]:
         embedding, linear = self.shared_emb_lm_head()
         x = jax.vmap(embedding)(x)
+        x = self.rotary_embeddings(x)
         x = self.layers(x)
         x = jax.vmap(self.norm_f)(x)
         logits = jax.vmap(linear)(x)
@@ -193,8 +204,6 @@ class MambaBlock(eqx.Module):
         delta_B_u = jnp.einsum("l d,l n,l d -> l d n", delta, B, u)
 
         x = jnp.zeros(shape=(d_in, n))
-
-        print(f"{x.shape=}")
 
         def step(x, i):
             x = delta_A[i] * x + delta_B_u[i]

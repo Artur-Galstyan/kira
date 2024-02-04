@@ -16,12 +16,14 @@ def train(
     train_dataloader: DataLoader,
     test_dataloader: DataLoader,
     learning_rate: float,
-    kira: Kira,
+    kira: Kira | eqx.Module,
     key: PRNGKeyArray,
     early_stop: int | None = None,
     wandb_client: Any | None = None,
     callback: Callable[[int, Kira, Any, int], None] | None = None,
     experiment: int = 7,
+    eval_every: Optional[int] = None,
+    log_every: Optional[int] = 100,
 ) -> Kira:
     optimizer = optax.adamw(learning_rate=learning_rate)
     opt_state = optimizer.init(eqx.filter(kira, eqx.is_inexact_array))
@@ -43,11 +45,11 @@ def train(
         y = jnp.array(y)
         key, subkey = jax.random.split(key)
         kira, opt_state, loss_value = step(kira, opt_state, x, y, optimizer, key=subkey)
-        if i % 100 == 0:
+        if log_every is not None and i % log_every == 0:
             loss_tqdm.set_description_str(f"train loss: {loss_value}")
             if wandb_client is not None:
                 wandb_client.log({"train_loss": loss_value})
-        if i % 1000 == 0:
+        if eval_every is not None and i % eval_every == 0:
             eval_loss = evaluate(test_dataloader, kira)
             eval_loss_tqdm.set_description_str(f"eval loss: {eval_loss}")
             if wandb_client is not None:
@@ -75,7 +77,7 @@ def evaluate(
 
 @eqx.filter_jit
 def loss_fn(
-    kira: Kira,
+    kira: Kira | eqx.Module,
     x: Int[Array, "batch_size max_seq_len n_dims"],
     labels: Int[Array, "batch_size max_seq_len n_dims"],
     key: Optional[PRNGKeyArray],
