@@ -8,11 +8,11 @@ from kira.model.model import Kira
 
 
 def generate_text(
-    kira: Kira,
+    kira: Kira | eqx.Module,
     max_seq_len: int,
     max_new_tokens: int,
     decode: Callable,
-    vobab_size: int,
+    vocab_size: int,
     print_to_console: bool = True,
     random_key_seed: int = 0,
     state: eqx.nn.State = None,
@@ -37,7 +37,7 @@ def generate_text(
             p=probs,
         )
         next_token = jnp.array(next_token, dtype=jnp.int32).reshape((1,))
-        next_token = min(next_token.item(), vobab_size - 1)
+        next_token = min(next_token.item(), vocab_size - 1)
 
         if print_to_console:
             print(decode([next_token]), end="")

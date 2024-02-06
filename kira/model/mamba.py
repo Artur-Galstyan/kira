@@ -39,12 +39,8 @@ class ModelArgs:
 class Mamba(eqx.Module):
     model_args: ModelArgs = eqx.field(static=True)
     layers: eqx.nn.Sequential
-
     norm_f: eqx.nn.RMSNorm
-
     shared_emb_lm_head: eqx.nn.Shared
-
-    rotary_embeddings: RotaryPositionalEmbedding
 
     def __init__(self, model_args: ModelArgs, *, key: PRNGKeyArray):
         self.model_args = model_args
@@ -73,10 +69,6 @@ class Mamba(eqx.Module):
             (embedding, lm_head), where=where, get=get
         )
 
-        self.rotary_embeddings = RotaryPositionalEmbedding(
-            embedding_size=model_args.d_model, max_seq_len=model_args.max_seq_len
-        )
-
     def __call__(
         self,
         x: Int[Array, "seq_len"],
@@ -86,7 +78,7 @@ class Mamba(eqx.Module):
     ) -> Float[Array, "seq_len vocab_size"]:
         embedding, linear = self.shared_emb_lm_head()
         x = jax.vmap(embedding)(x)
-        x = self.rotary_embeddings(x)
+
         x = self.layers(x)
         x = jax.vmap(self.norm_f)(x)
         logits = jax.vmap(linear)(x)
