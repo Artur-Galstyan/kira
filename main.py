@@ -1,13 +1,15 @@
 import json
+import time
+
 import equinox as eqx
 import jax
-from kira.generate import generate_text
-from kira.model.mamba import Mamba, ModelArgs
 from tinyshakespeareloader.hamlet import get_data
 
+import wandb
+from kira.generate import generate_text
+from kira.model.mamba import Mamba, ModelArgs
 from kira.model.model import Kira
 from kira.train import train
-import wandb
 
 
 def main():
@@ -31,16 +33,16 @@ def main():
     max_new_tokens = 2000
     key = jax.random.PRNGKey(0)
 
-    kira = Kira(
-        n_dims=n_dims,
-        n_embd=n_embd,
-        num_heads=num_heads,
-        num_query_heads=query_multihead_dim,
-        num_kv_heads=kv_multihead_dim,
-        max_seq_len=max_seq_len,
-        key=key,
-        n_layers=n_layers,
-    )
+    # kira = Kira(
+    #     n_dims=n_dims,
+    #     n_embd=n_embd,
+    #     num_heads=num_heads,
+    #     num_query_heads=query_multihead_dim,
+    #     num_kv_heads=kv_multihead_dim,
+    #     max_seq_len=max_seq_len,
+    #     key=key,
+    #     n_layers=n_layers,
+    # )
 
     model_args = ModelArgs(
         d_model=n_embd,
@@ -58,24 +60,24 @@ def main():
     key, subkey = jax.random.split(key)
 
     early_stop = 300
-    kira = train(
-        train_dataloader,
-        test_dataloader,
-        learning_rate,
-        kira,
-        subkey,
-        early_stop=early_stop,
-        # wandb_client=wandb,
-    )
-
-    generate_text(
-        kira,
-        max_seq_len,
-        max_new_tokens,
-        decode=tinyshakespeare.decode,
-        vocab_size=tinyshakespeare.vocab_size,
-    )
-
+    # kira = train(
+    #     train_dataloader,
+    #     test_dataloader,
+    #     learning_rate,
+    #     kira,
+    #     subkey,
+    #     early_stop=early_stop,
+    #     # wandb_client=wandb,
+    # )
+    #
+    # generate_text(
+    #     kira,
+    #     max_seq_len,
+    #     max_new_tokens,
+    #     decode=tinyshakespeare.decode,
+    #     vocab_size=tinyshakespeare.vocab_size,
+    # )
+    start_time = time.time()
     mamba = train(
         train_dataloader,
         test_dataloader,
@@ -85,6 +87,9 @@ def main():
         early_stop=early_stop,
         # wandb_client=wandb,
     )
+    print("", flush=True)
+    print("Training complete.")
+    print(f"Training took {time.time() - start_time} seconds for {early_stop} steps.")
 
     generate_text(
         mamba,
