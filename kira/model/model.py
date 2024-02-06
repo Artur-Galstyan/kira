@@ -9,7 +9,6 @@ from kira.model.rope_embeddings import RotaryPositionalEmbedding
 from functools import partial
 
 
-
 class Block(eqx.nn.StatefulLayer):
     mha_attention: MultiheadAttention
     rms_norm: eqx.nn.RMSNorm
@@ -132,7 +131,7 @@ class Kira(eqx.Module):
     num_query_heads: int = eqx.field(static=True)
     num_kv_heads: int = eqx.field(static=True)
 
-    blocks: eqx.nn.Sequential
+    blocks: list[Block]
 
     output: eqx.nn.Linear
 
@@ -163,19 +162,18 @@ class Kira(eqx.Module):
         key, *subkeys = jax.random.split(key, n_layers + 2)
 
         self.input_embedding = eqx.nn.Embedding(n_dims, n_embd, key=subkeys[0])
-        self.blocks = eqx.nn.Sequential(
-            [
-                Block(
-                    n_embd,
-                    num_heads,
-                    num_query_heads,
-                    num_kv_heads,
-                    max_seq_len,
-                    key=subkeys[i + 1],
-                )
-                for i in range(n_layers)
-            ]
-        )
+        self.blocks = [
+            Block(
+                n_embd,
+                num_heads,
+                num_query_heads,
+                num_kv_heads,
+                max_seq_len,
+                key=subkeys[i + 1],
+            )
+            for i in range(n_layers)
+        ]
+
         self.rms_norm = eqx.nn.RMSNorm(shape=n_embd)
         self.output = eqx.nn.Linear(n_embd, n_dims, key=subkeys[-1])
 
@@ -188,7 +186,8 @@ class Kira(eqx.Module):
         key: Optional[PRNGKeyArray],
     ):
         x = jax.vmap(self.input_embedding)(x)
-        x, state = self.blocks(x, state, mask, key=key)
+        for block in self.blocks:
+            x, state = block(x, state=state, mask=mask, key=key)
         x = jax.vmap(self.rms_norm)(x)
         x = jax.vmap(self.output)(x)
 
