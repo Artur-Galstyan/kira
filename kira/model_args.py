@@ -1,8 +1,6 @@
 import math
 from dataclasses import dataclass
 
-from jaxtyping import PRNGKeyArray
-
 
 @dataclass
 class ModelArgs:

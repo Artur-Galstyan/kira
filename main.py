@@ -1,11 +1,8 @@
-import json
 import time
 
-import equinox as eqx
 import jax
 from tinyshakespeareloader.hamlet import get_data
 
-import wandb
 from kira.generate import generate_text
 from kira.train import train
 from kira import Mamba, Kira
