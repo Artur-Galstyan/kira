@@ -1,39 +1,9 @@
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from jaxtyping import PRNGKeyArray, Array, Float, Int
-from typing import Union
-import math
-from dataclasses import dataclass
+from jaxtyping import Array, Float, Int, PRNGKeyArray
 
-from kira.model.rope_embeddings import RotaryPositionalEmbedding
-
-
-@dataclass
-class ModelArgs:
-    d_model: int
-    n_layer: int
-    vocab_size: int
-    d_state: int = 16
-    expand: int = 2
-    dt_rank: Union[int, str] = "auto"
-    d_conv: int = 4
-    pad_vocab_size_multiple: int = 8
-    conv_bias: bool = True
-    bias: bool = False
-    max_seq_len: int = 8
-
-    def __post_init__(self):
-        self.d_inner = int(self.expand * self.d_model)
-
-        if self.dt_rank == "auto":
-            self.dt_rank = math.ceil(self.d_model / 16)
-
-        if self.vocab_size % self.pad_vocab_size_multiple != 0:
-            self.vocab_size += (
-                self.pad_vocab_size_multiple
-                - self.vocab_size % self.pad_vocab_size_multiple
-            )
+from kira.model_args import ModelArgs
 
 
 class Mamba(eqx.Module):
@@ -44,22 +14,22 @@ class Mamba(eqx.Module):
 
     def __init__(self, model_args: ModelArgs, *, key: PRNGKeyArray):
         self.model_args = model_args
-        key, *subkeys = jax.random.split(key, 1 + model_args.n_layer)
+        key, *subkeys = jax.random.split(key, 1 + model_args.n_layers)
         embedding = eqx.nn.Embedding(
-            model_args.vocab_size, model_args.d_model, key=subkeys[0]
+            model_args.n_dims, model_args.n_embd, key=subkeys[0]
         )
 
         self.layers = eqx.nn.Sequential(
             [
                 ResidualBlock(model_args, key=subkeys[i])
-                for i in range(model_args.n_layer)
+                for i in range(model_args.n_layers)
             ],
         )
 
-        self.norm_f = eqx.nn.RMSNorm(model_args.d_model)
+        self.norm_f = eqx.nn.RMSNorm(model_args.n_embd)
         lm_head = eqx.nn.Linear(
-            model_args.d_model,
-            model_args.vocab_size,
+            model_args.n_embd,
+            model_args.n_dims,
             use_bias=False,
             key=subkeys[-1],
         )
@@ -75,7 +45,7 @@ class Mamba(eqx.Module):
         *,
         state: eqx.nn.State = None,
         key: PRNGKeyArray = None,
-    ) -> Float[Array, "seq_len vocab_size"]:
+    ) -> Float[Array, "seq_len n_dims"]:
         embedding, linear = self.shared_emb_lm_head()
         x = jax.vmap(embedding)(x)
 
@@ -105,6 +75,10 @@ class MambaBlock(eqx.Module):
         *,
         key: PRNGKeyArray,
     ):
+        assert model_args.d_inner is not None, "d_inner must be provided"
+        assert model_args.d_state is not None, "d_state must be provided"
+        assert model_args.d_conv is not None, "d_conv must be provided"
+
         self.model_args = model_args
         (
             key,
@@ -116,7 +90,7 @@ class MambaBlock(eqx.Module):
         ) = jax.random.split(key, 6)
 
         self.in_proj = eqx.nn.Linear(
-            model_args.d_model,
+            model_args.n_embd,
             model_args.d_inner * 2,
             use_bias=model_args.bias,
             key=linear_key,
@@ -150,7 +124,7 @@ class MambaBlock(eqx.Module):
         self.D = jnp.ones(model_args.d_inner)
         self.out_proj = eqx.nn.Linear(
             model_args.d_inner,
-            model_args.d_model,
+            model_args.n_embd,
             use_bias=model_args.bias,
             key=x_proj_key,
         )
@@ -219,7 +193,7 @@ class ResidualBlock(eqx.Module):
             model_args=model_args,
             key=key,
         )
-        self.rns_norm = eqx.nn.RMSNorm(model_args.d_model)
+        self.rns_norm = eqx.nn.RMSNorm(model_args.n_embd)
 
     def __call__(self, x: Array, *, key: PRNGKeyArray = None) -> Array:
         return self.mamba_block(jax.vmap(self.rns_norm)(x)) + x
@@ -227,11 +201,12 @@ class ResidualBlock(eqx.Module):
 
 if __name__ == "__main__":
     model_args = ModelArgs(
-        d_model=512,
-        n_layer=6,
-        vocab_size=256,
+        architecture="mamba",
+        n_embd=512,
+        n_layers=6,
+        n_dims=256,
     )
-    key = jax.random.PRNGKey(0)
+    key = jax.random.PRNGKey(model_args.key_seed)
     mamba = Mamba(model_args, key=key)
     x = jnp.ones((8), dtype=jnp.int32)
     print(mamba(x).shape)

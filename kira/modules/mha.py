@@ -463,10 +463,6 @@ class MultiheadAttention(eqx.Module):
             raise ValueError("key and value must both be sequences of equal length.")
         del kv_seq_length2
 
-        # query_heads = self._project(self.query_proj, self.query_multihead, query)
-        # key_heads = self._project(self.key_proj, self.key_multihead, key_)
-        # value_heads = self._project(self.value_proj, self.value_multihead, value)
-
         query_heads = self._new_project(
             self.query_proj, self.query_multihead_dim, query
         )

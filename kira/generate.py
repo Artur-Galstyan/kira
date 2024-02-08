@@ -3,12 +3,11 @@ from typing import Callable
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-
-from kira.model.model import Kira
+from jaxtyping import PyTree
 
 
 def generate_text(
-    kira: Kira | eqx.Module,
+    model: PyTree,
     max_seq_len: int,
     max_new_tokens: int,
     decode: Callable,
@@ -17,17 +16,17 @@ def generate_text(
     random_key_seed: int = 0,
     state: eqx.nn.State = None,
 ) -> tuple[list[str], list[int]]:
-    jitted_kira = eqx.filter_jit(kira)
+    jitted_model = eqx.filter_jit(model)
     x = jnp.zeros((max_seq_len,), dtype=jnp.int32)
     key = jax.random.PRNGKey(random_key_seed)
     tokens = []
     decoded_tokens = []
     for _ in range(max_new_tokens):
-        key, subkey, kira_key = jax.random.split(key, 3)
+        key, subkey, model_key = jax.random.split(key, 3)
         if state is None:
-            logits = jitted_kira(x, state=state, key=kira_key)
+            logits = jitted_model(x, state=state, key=model_key)
         else:
-            logits, state = jitted_kira(x, state=state, key=kira_key)
+            logits, state = jitted_model(x, state=state, key=model_key)
         logits = logits[-1, :]
         probs = jax.nn.softmax(logits, axis=-1)
 
