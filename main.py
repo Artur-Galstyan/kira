@@ -98,7 +98,7 @@ def main():
     xs = []
     ys = []
     key, subkey, subkey2 = jax.random.split(key, 3)
-    for i in range(2400):
+    for i in range(3000):
         x = jax.random.randint(subkey, (batch_size, max_seq_len), 0, n_dims)
         y = jax.random.randint(subkey2, (batch_size, max_seq_len), 0, n_dims)
         xs.append(x)
@@ -113,13 +113,13 @@ def main():
     print("Training complete.")
     print(f"Training took {time.time() - start_time} seconds for {early_stop} steps.")
 
-    generate_text(
-        mamba,
-        max_seq_len,
-        max_new_tokens,
-        decode=tinyshakespeare.decode,
-        vocab_size=tinyshakespeare.vocab_size,
-    )
+    #generate_text(
+    #    mamba,
+    #    max_seq_len,
+    #    max_new_tokens,
+    #    decode=tinyshakespeare.decode,
+    #    vocab_size=tinyshakespeare.vocab_size,
+    #)
 
 
 if __name__ == "__main__":
