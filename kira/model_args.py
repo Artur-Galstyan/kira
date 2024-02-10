@@ -35,7 +35,7 @@ class ModelArgs:
             self.d_inner = int(self.expand * self.n_embd)
 
             if self.dt_rank == "auto":
-                self.dt_rank = math.ceil(self.n_embd / 16)
+                self.dt_rank = math.ceil(self.n_embd / self.d_state)
 
             if self.n_dims % self.pad_vocab_size_multiple != 0:
                 self.n_dims += (

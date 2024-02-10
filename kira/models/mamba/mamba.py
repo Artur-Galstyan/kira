@@ -140,35 +140,35 @@ class MambaBlock(eqx.Module):
         x = jax.nn.silu(x)
 
         y = self.ssm(x)
-
         y = y * jax.nn.silu(res)
 
         output = jax.vmap(self.out_proj)(y)
-
         return output
 
     def ssm(self, x: Float[Array, "seq_len d_inner"]):
-        d_in, n = self.A_log.shape
-
         A = -jnp.exp(self.A_log)
         D = self.D
 
         x_dbl = jax.vmap(self.x_proj)(x)
-        split_indices = [self.model_args.dt_rank, self.model_args.dt_rank + n]
+
+        split_indices = [
+            self.model_args.dt_rank,
+            self.model_args.dt_rank + self.model_args.d_state,
+        ]
         delta, B, C = jnp.split(x_dbl, split_indices, axis=-1)
+
         delta = jax.nn.softplus(jax.vmap(self.dt_proj)(delta))
 
         y = self.selective_scan(x, delta, A, B, C, D)
         return y
 
     def selective_scan(self, u, delta, A, B, C, D):
-        L, d_in = u.shape
-        n = A.shape[1]
+        L, _ = u.shape
 
         delta_A = jnp.exp(jnp.einsum("l d,d n -> l d n", delta, A))
         delta_B_u = jnp.einsum("l d,l n,l d -> l d n", delta, B, u)
 
-        x = jnp.zeros(shape=(d_in, n))
+        x_res = jnp.zeros(shape=(self.model_args.d_inner, self.model_args.d_state))
 
         def step(x, i):
             x = delta_A[i] * x + delta_B_u[i]
@@ -176,7 +176,7 @@ class MambaBlock(eqx.Module):
             y = jnp.einsum("d n,n -> d", x, C[i, :])
             return x, y
 
-        _, ys = jax.lax.scan(step, x, jnp.arange(L))
+        _, ys = jax.lax.scan(step, x_res, jnp.arange(L))
 
         ys = ys + u * D
         return ys
@@ -195,7 +195,9 @@ class ResidualBlock(eqx.Module):
         )
         self.rns_norm = eqx.nn.RMSNorm(model_args.n_embd)
 
-    def __call__(self, x: Array, *, key: PRNGKeyArray = None) -> Array:
+    def __call__(
+        self, x: Float[Array, "seq_len n_embd"], *, key: PRNGKeyArray = None
+    ) -> Array:
         return self.mamba_block(jax.vmap(self.rns_norm)(x)) + x
 
 
