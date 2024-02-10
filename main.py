@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 def main():
     max_seq_len = 8
-    early_stop = 300
+    early_stop = 3000
     batch_size = 64
     tinyshakespeare = get_data(
         batch_size=batch_size, block_size=max_seq_len, shuffle=True
@@ -98,7 +98,7 @@ def main():
     xs = []
     ys = []
     key, subkey, subkey2 = jax.random.split(key, 3)
-    for i in range(3000):
+    for i in range(early_stop):
         x = jax.random.randint(subkey, (batch_size, max_seq_len), 0, n_dims)
         y = jax.random.randint(subkey2, (batch_size, max_seq_len), 0, n_dims)
         xs.append(x)
