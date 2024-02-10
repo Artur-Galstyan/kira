@@ -1,12 +1,14 @@
 import time
 
+import equinox as eqx
 import jax
 from tinyshakespeareloader.hamlet import get_data
 
-from kira.generate import generate_text
-from kira.train import train
 from kira import Mamba
+from kira.generate import generate_text
 from kira.model_args import get_mamba_args, get_transformer_args
+from kira.train import train
+from tqdm import tqdm
 
 
 def main():
@@ -82,16 +84,31 @@ def main():
 
     key, subkey = jax.random.split(key)
 
+    # mamba = train(
+    #     train_dataloader,
+    #     test_dataloader,
+    #     learning_rate,
+    #     mamba,
+    #     subkey,
+    #     early_stop=early_stop,
+    #     # wandb_client=wandb,
+    # )
+
+    # generate some dummy training data
+    xs = []
+    ys = []
+    key, subkey, subkey2 = jax.random.split(key, 3)
+    for i in range(2400):
+        x = jax.random.randint(subkey, (batch_size, max_seq_len), 0, n_dims)
+        y = jax.random.randint(subkey2, (batch_size, max_seq_len), 0, n_dims)
+        xs.append(x)
+        ys.append(y)
+
     start_time = time.time()
-    mamba = train(
-        train_dataloader,
-        test_dataloader,
-        learning_rate,
-        mamba,
-        subkey,
-        early_stop=early_stop,
-        # wandb_client=wandb,
-    )
+    mamba = eqx.filter_jit(mamba)
+    for x, y in tqdm(zip(xs, ys)):
+        eqx.filter_vmap(mamba)(x)
+
     print("", flush=True)
     print("Training complete.")
     print(f"Training took {time.time() - start_time} seconds for {early_stop} steps.")
