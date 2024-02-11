@@ -1,5 +1,7 @@
 # That's right. I'm _**Kira**_ ✍️
 
+## (This README is deprecated! I will update it after the Mamba code is clean enough)
+
 _Kira_ is a transformer built with JAX and
 [Equinox](https://github.com/patrick-kidger/equinox), which is IMHO the best
 neural network library built on top of JAX out there, because of its simple and
