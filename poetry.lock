@@ -314,15 +314,19 @@ version = "0.11.3"
 description = "Elegant easy-to-use neural networks in JAX."
 optional = false
 python-versions = "~=3.9"
-files = [
-    {file = "equinox-0.11.3-py3-none-any.whl", hash = "sha256:04cf3faaf2b977ff1f7f89b7bf69c4e825d084c0bf59c6ccc19adba320d4b4a1"},
-    {file = "equinox-0.11.3.tar.gz", hash = "sha256:a1273cc28c60d3131ac596f8a0f5c7dd384729e6cddae86e7be05f026880e8e0"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 jax = ">=0.4.13"
 jaxtyping = ">=0.2.20"
 typing-extensions = ">=4.5.0"
+
+[package.source]
+type = "git"
+url = "https://github.com/Artur-Galstyan/equinox.git"
+reference = "rope-main-w-rebase"
+resolved_reference = "3e6f3556c2244ccae187b6c5f121629592847373"
 
 [[package]]
 name = "executing"
@@ -2043,4 +2047,4 @@ dev = ["black (>=19.3b0)", "pytest (>=4.6.2)"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<3.12"
-content-hash = "49d608b090313337d15157384e84dfbb51807db313a80822d4caa86539df615f"
+content-hash = "f3883403ada2c776dd0092314a3372247d986ee26643ec8e9b5669965a92380d"

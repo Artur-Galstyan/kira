@@ -7,7 +7,7 @@ from jaxtyping import Array, Int, PRNGKeyArray
 
 from kira.model_args import ModelArgs
 from kira.modules.mha import MultiheadAttention
-from kira.modules.rope_embeddings import RotaryPositionalEmbedding
+# from kira.modules.rope_embeddings import RotaryPositionalEmbedding
 
 
 class Block(eqx.nn.StatefulLayer):
@@ -17,9 +17,8 @@ class Block(eqx.nn.StatefulLayer):
     dropout: eqx.nn.Dropout
 
     model_args: ModelArgs = eqx.field(static=True)
-
-    key_rope_embeddings: RotaryPositionalEmbedding
-    query_rope_embeddings: RotaryPositionalEmbedding
+    key_rope_embeddings: eqx.nn.RotaryPositionalEmbedding
+    query_rope_embeddings: eqx.nn.RotaryPositionalEmbedding
 
     def __init__(
         self,
@@ -30,11 +29,11 @@ class Block(eqx.nn.StatefulLayer):
     ):
         self.model_args = model_args
         key, *subkeys = jax.random.split(key, 5)
-        self.query_rope_embeddings = RotaryPositionalEmbedding(
+        self.query_rope_embeddings = eqx.nn.RotaryPositionalEmbedding(
             embedding_size=model_args.n_embd, max_seq_len=model_args.max_seq_len
         )
 
-        self.key_rope_embeddings = RotaryPositionalEmbedding(
+        self.key_rope_embeddings = eqx.nn.RotaryPositionalEmbedding(
             embedding_size=model_args.n_embd, max_seq_len=model_args.max_seq_len
         )
 

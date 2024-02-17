@@ -11,7 +11,7 @@ exclude=["experiments/*", "wandb/*"]
 [tool.poetry.dependencies]
 python = ">=3.11,<3.12"
 numpy = "^1.26.1"
-equinox = "^0.11.3"
+equinox = { git = "https://github.com/Artur-Galstyan/equinox.git", branch = "main" }
 # jax = { version = "^0.4.23", optional = true }
 jax = "^0.4.23"
 matplotlib = "^3.8.0"
