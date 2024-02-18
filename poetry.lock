@@ -325,8 +325,8 @@ typing-extensions = ">=4.5.0"
 [package.source]
 type = "git"
 url = "https://github.com/Artur-Galstyan/equinox.git"
-reference = "rope-main-w-rebase"
-resolved_reference = "3e6f3556c2244ccae187b6c5f121629592847373"
+reference = "main"
+resolved_reference = "77851845e2caff7482cb6bd35843537998f938c3"
 
 [[package]]
 name = "executing"
@@ -2047,4 +2047,4 @@ dev = ["black (>=19.3b0)", "pytest (>=4.6.2)"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<3.12"
-content-hash = "f3883403ada2c776dd0092314a3372247d986ee26643ec8e9b5669965a92380d"
+content-hash = "4fd578e02237b35883ae6945b613ea0c029056b1178e164991b769fba8cae730"
