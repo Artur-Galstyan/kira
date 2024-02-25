@@ -1,5 +1,5 @@
 import functools as ft
-from typing import Any, Optional, Callable
+from typing import Any, Callable, Optional
 
 import equinox as eqx
 import jax
@@ -36,6 +36,7 @@ def train(
     eval_loss_tqdm = tqdm(
         total=total, desc="eval loss", position=2, bar_format="{desc}", leave=False
     )
+    loss_value = 0
     for i, (x, y) in tqdm(
         enumerate(train_dataloader), desc="train", position=1, leave=False
     ):
@@ -58,6 +59,8 @@ def train(
             break
         if callback is not None:
             callback(i, model, wandb_client, experiment)
+    print("Finished training")
+    print("Final loss:", loss_value)
     return model
 
 

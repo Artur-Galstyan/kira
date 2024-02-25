@@ -47,6 +47,7 @@ def main():
 
     key = jax.random.PRNGKey(kira_model_args.key_seed)
 
+<<<<<<< Updated upstream
     # kira = Kira(
     #     model_args=kira_model_args,
     #     key=key,
@@ -62,6 +63,23 @@ def main():
     #     # wandb_client=wandb,
     # )
     #
+=======
+    kira = Kira(
+        model_args=kira_model_args,
+        key=key,
+    )
+    key, subkey = jax.random.split(key)
+    kira = train(
+        train_dataloader,
+        test_dataloader,
+        learning_rate,
+        kira,
+        early_stop=early_stop,
+        key=subkey,
+        # wandb_client=wandb,
+    )
+
+>>>>>>> Stashed changes
     # generate_text(
     #     kira,
     #     max_seq_len,
