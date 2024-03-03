@@ -1,78 +1,68 @@
 import functools as ft
-from typing import Any, Callable, Optional
+import sys
+from typing import Any, Optional
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import optax
+from jaxonloader import Index, JaxonDataLoader, JITJaxonDataLoader
 from jaxtyping import Array, Int, PRNGKeyArray, PyTree
-from torch.utils.data import DataLoader
-from tqdm import tqdm
+from loguru import logger
 
 
 def train(
-    train_dataloader: DataLoader,
-    test_dataloader: DataLoader,
+    train_dataloader: JaxonDataLoader | JITJaxonDataLoader,
+    train_index: Index,
     learning_rate: float,
     model: PyTree,
     key: PRNGKeyArray,
     early_stop: int | None = None,
     wandb_client: Any | None = None,
-    callback: Callable[[int, PyTree, Any, int], None] | None = None,
     experiment: int = 7,
     eval_every: Optional[int] = None,
     log_every: Optional[int] = 100,
 ) -> PyTree:
     optimizer = optax.adamw(learning_rate=learning_rate)
     opt_state = optimizer.init(eqx.filter(model, eqx.is_inexact_array))
-    total = len(train_dataloader) if early_stop is None else early_stop
-    loss_tqdm = tqdm(
-        total=total,
-        desc="train loss",
-        position=2,
-        bar_format="{desc}",
-        leave=False,
-    )
-    eval_loss_tqdm = tqdm(
-        total=total, desc="eval loss", position=2, bar_format="{desc}", leave=False
-    )
     loss_value = 0
-    for i, (x, y) in tqdm(
-        enumerate(train_dataloader), desc="train", position=1, leave=False
-    ):
-        x = jnp.array(x)
-        y = jnp.array(y)
+    i = 0
+    while it := train_dataloader(train_index):
+        x, index, done = it
+        if done:
+            break
+        x, y = jnp.split(x, 2, axis=1)
         key, subkey = jax.random.split(key)
         model, opt_state, loss_value = step(
             model, opt_state, x, y, optimizer, key=subkey
         )
+
         if log_every is not None and i % log_every == 0:
-            loss_tqdm.set_description_str(f"train loss: {loss_value}")
+            logger.info(f"Loss: {loss_value}")
             if wandb_client is not None:
                 wandb_client.log({"train_loss": loss_value})
-        if eval_every is not None and i % eval_every == 0:
-            eval_loss = evaluate(test_dataloader, model)
-            eval_loss_tqdm.set_description_str(f"eval loss: {eval_loss}")
-            if wandb_client is not None:
-                wandb_client.log({"eval_loss": eval_loss})
         if early_stop is not None and i > early_stop:
             break
-        if callback is not None:
-            callback(i, model, wandb_client, experiment)
-    print("Finished training")
-    print("Final loss:", loss_value)
+
+        i += 1
+    logger.info("Finished training")
+    logger.info(f"Final loss: {loss_value}")
     return model
 
 
 def evaluate(
-    test_dataloader: DataLoader,
+    test_dataloader: JaxonDataLoader,
+    test_index: eqx.nn.State,
     model: PyTree,
 ):
     loss = 0
-    for _, (x, y) in enumerate(test_dataloader):
+    while it := test_dataloader(test_index):
+        x, index, done = it
+        if done:
+            break
+        x, y = jnp.split(x, 2, axis=1)
         x = jnp.array(x)
         y = jnp.array(y)
-
         loss += loss_fn(model, x, y, key=None)
 
     return loss / len(test_dataloader)

@@ -1,7 +1,7 @@
 import functools as ft
 import math
 import warnings
-from typing import Literal, Optional, Tuple, Union, overload, Callable
+from typing import Callable, Literal, Optional, overload, Tuple, Union
 
 import equinox as eqx
 import jax

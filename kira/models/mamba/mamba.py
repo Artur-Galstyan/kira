@@ -1,19 +1,49 @@
+from typing import Optional
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Float, Int, PRNGKeyArray
+from kira.model_args import MambaModelArgs
 
-from kira.model_args import ModelArgs
+
+def selective_scan(
+    x: Float[Array, "seq_length d_inner"],
+    delta: Float[Array, "seq_length d_inner"],
+    A: Float[Array, "d_inner d_state"],
+    B: Float[Array, "seq_length d_state"],
+    C: Float[Array, "seq_length d_state"],
+    D: Float[Array, " d_inner"],
+) -> Float[Array, "seq_length d_inner"]:
+    L, d_inner = x.shape
+    _, d_state = A.shape
+    delta_A = jnp.exp(jnp.einsum("l d,d n -> l d n", delta, A))
+    delta_B_u = jnp.einsum("l d,l n,l d -> l d n", delta, B, x)
+
+    x_res = jnp.zeros(shape=(d_inner, d_state))
+
+    def step(x, i):
+        x = delta_A[i] * x + delta_B_u[i]
+
+        y = jnp.einsum("d n,n -> d", x, C[i, :])
+        return x, y
+
+    _, ys = jax.lax.scan(step, x_res, jnp.arange(L))
+
+    ys = ys + x * D
+    return ys
 
 
 class Mamba(eqx.Module):
-    model_args: ModelArgs = eqx.field(static=True)
+    model_args: MambaModelArgs = eqx.field(static=True)
     layers: eqx.nn.Sequential
     norm_f: eqx.nn.RMSNorm
     shared_emb_lm_head: eqx.nn.Shared
 
-    def __init__(self, model_args: ModelArgs, *, key: PRNGKeyArray):
+    def __init__(self, model_args: MambaModelArgs, *, key: PRNGKeyArray):
         self.model_args = model_args
+        if model_args.n_layers is None:
+            raise ValueError("n_layers must be provided")
         key, *subkeys = jax.random.split(key, 1 + model_args.n_layers)
         embedding = eqx.nn.Embedding(
             model_args.n_dims, model_args.n_embd, key=subkeys[0]
@@ -41,11 +71,11 @@ class Mamba(eqx.Module):
 
     def __call__(
         self,
-        x: Int[Array, "seq_len"],
+        x: Int[Array, " seq_length"],
         *,
-        state: eqx.nn.State = None,
-        key: PRNGKeyArray = None,
-    ) -> Float[Array, "seq_len n_dims"]:
+        state: Optional[eqx.nn.State] = None,
+        key: Optional[PRNGKeyArray] = None,
+    ) -> Float[Array, "seq_length n_dims"]:
         embedding, linear = self.shared_emb_lm_head()
         x = jax.vmap(embedding)(x)
 
@@ -55,39 +85,87 @@ class Mamba(eqx.Module):
         return logits
 
 
+class SSM(eqx.Module):
+    input_proj: eqx.nn.Linear
+    delta_proj: eqx.nn.Linear
+    A_log: Float[Array, "d_inner d_state"]
+    D: Float[Array, " d_inner"]
+
+    model_args: MambaModelArgs = eqx.field(static=True)
+
+    def __init__(self, model_args: MambaModelArgs, *, key: PRNGKeyArray):
+        if model_args.d_inner is None:
+            raise ValueError("d_inner must be provided")
+        if model_args.dt_rank is None:
+            raise ValueError("dt_rank must be provided")
+        if not isinstance(model_args.dt_rank, int):
+            raise ValueError("dt_rank must be an integer")
+        (
+            key,
+            x_proj_key,
+            dt_proj_key,
+        ) = jax.random.split(key, 3)
+        self.model_args = model_args
+        self.input_proj = eqx.nn.Linear(
+            model_args.d_inner,
+            model_args.dt_rank + model_args.d_state * 2,
+            use_bias=False,
+            key=x_proj_key,
+        )
+
+        self.delta_proj = eqx.nn.Linear(
+            model_args.dt_rank, model_args.d_inner, use_bias=True, key=dt_proj_key
+        )
+
+        A = jnp.repeat(
+            jnp.arange(1, model_args.d_state + 1), model_args.d_inner
+        ).reshape(model_args.d_inner, model_args.d_state)
+        self.A_log = jnp.log(A)
+        self.D = jnp.ones(model_args.d_inner)
+
+    def __call__(self, x: Float[Array, "seq_length d_inner"]):
+        assert isinstance(self.model_args.dt_rank, int), "dt_rank must be an integer"
+        A = -jnp.exp(self.A_log)
+        D = self.D
+
+        x_dbl = jax.vmap(self.input_proj)(x)
+
+        split_indices = [
+            self.model_args.dt_rank,
+            self.model_args.dt_rank + self.model_args.d_state,
+        ]
+        delta, B, C = jnp.split(x_dbl, split_indices, axis=-1)
+        delta = jax.nn.softplus(jax.vmap(self.delta_proj)(delta))
+
+        y = selective_scan(x, delta, A, B, C, D)
+        return y
+
+
 class MambaBlock(eqx.Module):
-    model_args: ModelArgs = eqx.field(static=True)
+    model_args: MambaModelArgs = eqx.field(static=True)
 
     in_proj: eqx.nn.Linear
     conv1d: eqx.nn.Conv1d
-
-    x_proj: eqx.nn.Linear
-    dt_proj: eqx.nn.Linear
-
-    A_log: Array
-    D: Array
-
+    ssm: SSM
     out_proj: eqx.nn.Linear
 
     def __init__(
         self,
-        model_args: ModelArgs,
+        model_args: MambaModelArgs,
         *,
         key: PRNGKeyArray,
     ):
         assert model_args.d_inner is not None, "d_inner must be provided"
-        assert model_args.d_state is not None, "d_state must be provided"
-        assert model_args.d_conv is not None, "d_conv must be provided"
-
+        assert isinstance(model_args.dt_rank, int), "dt_rank must be an integer"
         self.model_args = model_args
+
         (
             key,
             linear_key,
             conv1d_key,
-            x_proj_key,
-            dt_proj_key,
+            ssm_key,
             out_proj_key,
-        ) = jax.random.split(key, 6)
+        ) = jax.random.split(key, 5)
 
         self.in_proj = eqx.nn.Linear(
             model_args.n_embd,
@@ -105,37 +183,21 @@ class MambaBlock(eqx.Module):
             padding=model_args.d_conv - 1,
             key=conv1d_key,
         )
-
-        self.x_proj = eqx.nn.Linear(
-            model_args.d_inner,
-            model_args.dt_rank + model_args.d_state * 2,
-            use_bias=False,
-            key=x_proj_key,
-        )
-
-        self.dt_proj = eqx.nn.Linear(
-            model_args.dt_rank, model_args.d_inner, use_bias=True, key=dt_proj_key
-        )
-
-        A = jnp.repeat(
-            jnp.arange(1, model_args.d_state + 1), model_args.d_inner
-        ).reshape(model_args.d_inner, model_args.d_state)
-        self.A_log = jnp.log(A)
-        self.D = jnp.ones(model_args.d_inner)
+        self.ssm = SSM(model_args, key=ssm_key)
         self.out_proj = eqx.nn.Linear(
             model_args.d_inner,
             model_args.n_embd,
             use_bias=model_args.bias,
-            key=x_proj_key,
+            key=out_proj_key,
         )
 
     def __call__(self, x: Array):
-        seq_len, d = x.shape
+        seq_length, d = x.shape
         x_and_res = jax.vmap(self.in_proj)(x)
-        (x, res) = jnp.split(x_and_res, 2, axis=-1)
 
+        (x, res) = jnp.split(x_and_res, 2, axis=-1)
         x = jnp.transpose(x)
-        x = self.conv1d(x)[:, :seq_len]
+        x = self.conv1d(x)[:, :seq_length]
         x = jnp.transpose(x)
         x = jax.nn.silu(x)
 
@@ -145,49 +207,13 @@ class MambaBlock(eqx.Module):
         output = jax.vmap(self.out_proj)(y)
         return output
 
-    def ssm(self, x: Float[Array, "seq_len d_inner"]):
-        A = -jnp.exp(self.A_log)
-        D = self.D
-
-        x_dbl = jax.vmap(self.x_proj)(x)
-
-        split_indices = [
-            self.model_args.dt_rank,
-            self.model_args.dt_rank + self.model_args.d_state,
-        ]
-        delta, B, C = jnp.split(x_dbl, split_indices, axis=-1)
-
-        delta = jax.nn.softplus(jax.vmap(self.dt_proj)(delta))
-
-        y = self.selective_scan(x, delta, A, B, C, D)
-        return y
-
-    def selective_scan(self, u, delta, A, B, C, D):
-        L, _ = u.shape
-
-        delta_A = jnp.exp(jnp.einsum("l d,d n -> l d n", delta, A))
-        delta_B_u = jnp.einsum("l d,l n,l d -> l d n", delta, B, u)
-
-        x_res = jnp.zeros(shape=(self.model_args.d_inner, self.model_args.d_state))
-
-        def step(x, i):
-            x = delta_A[i] * x + delta_B_u[i]
-
-            y = jnp.einsum("d n,n -> d", x, C[i, :])
-            return x, y
-
-        _, ys = jax.lax.scan(step, x_res, jnp.arange(L))
-
-        ys = ys + u * D
-        return ys
-
 
 class ResidualBlock(eqx.Module):
     mamba_block: MambaBlock
-    model_args: ModelArgs = eqx.field(static=True)
+    model_args: MambaModelArgs = eqx.field(static=True)
     rns_norm: eqx.nn.RMSNorm
 
-    def __init__(self, model_args: ModelArgs, *, key: PRNGKeyArray):
+    def __init__(self, model_args: MambaModelArgs, *, key: PRNGKeyArray):
         self.model_args = model_args
         self.mamba_block = MambaBlock(
             model_args=model_args,
@@ -196,14 +222,16 @@ class ResidualBlock(eqx.Module):
         self.rns_norm = eqx.nn.RMSNorm(model_args.n_embd)
 
     def __call__(
-        self, x: Float[Array, "seq_len n_embd"], *, key: PRNGKeyArray = None
+        self,
+        x: Float[Array, "seq_length n_embd"],
+        *,
+        key: Optional[PRNGKeyArray] = None,
     ) -> Array:
         return self.mamba_block(jax.vmap(self.rns_norm)(x)) + x
 
 
 if __name__ == "__main__":
-    model_args = ModelArgs(
-        architecture="mamba",
+    model_args = MambaModelArgs(
         n_embd=512,
         n_layers=6,
         n_dims=256,

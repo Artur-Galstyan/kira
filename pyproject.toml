@@ -10,6 +10,7 @@ authors = [
 ]
 dependencies=[
   "jax",
+  "equinox",
   "jaxlib",
   "jaxtyping",
   "tqdm",
@@ -21,7 +22,7 @@ dependencies=[
   "pytest",
   "matplotlib",
   "optax",
-  "torch",
+  "jaxonloader", 
   "fire",
   "wandb",
 ]

@@ -5,7 +5,7 @@ import equinox as eqx
 import jax
 from jaxtyping import Array, Int, PRNGKeyArray
 
-from kira.model_args import ModelArgs
+from kira.model_args import KiraModelArgs
 from kira.modules.mha import MultiheadAttention
 from kira.modules.rope_embeddings import RotaryPositionalEmbedding
 
@@ -16,14 +16,14 @@ class Block(eqx.nn.StatefulLayer):
     feedforward: eqx.nn.MLP
     dropout: eqx.nn.Dropout
 
-    model_args: ModelArgs = eqx.field(static=True)
+    model_args: KiraModelArgs = eqx.field(static=True)
 
     key_rope_embeddings: RotaryPositionalEmbedding
     query_rope_embeddings: RotaryPositionalEmbedding
 
     def __init__(
         self,
-        model_args: ModelArgs,
+        model_args: KiraModelArgs,
         *,
         key,
         **kwargs,
@@ -109,7 +109,7 @@ class Block(eqx.nn.StatefulLayer):
 
 
 class Kira(eqx.Module):
-    model_args: ModelArgs = eqx.field(static=True)
+    model_args: KiraModelArgs = eqx.field(static=True)
 
     blocks: list[Block]
 
@@ -120,7 +120,7 @@ class Kira(eqx.Module):
 
     def __init__(
         self,
-        model_args: ModelArgs,
+        model_args: KiraModelArgs,
         *,
         key,
         **kwargs,
@@ -147,7 +147,7 @@ class Kira(eqx.Module):
 
     def __call__(
         self,
-        x: Int[Array, "seq_len"],
+        x: Int[Array, " seq_len"],
         state: eqx.nn.State | None = None,
         mask: str | None = "causal",
         *,

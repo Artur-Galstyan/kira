@@ -2,29 +2,40 @@ import time
 
 import equinox as eqx
 import jax
-from tinyshakespeareloader.hamlet import get_data
-
-from kira import Mamba
+from jaxonloader import get_tiny_shakespeare, make
+from kira import Kira, Mamba
 from kira.generate import generate_text
-from kira.model_args import get_mamba_args, get_transformer_args
+from kira.model_args import get_kira_args, get_mamba_args
 from kira.train import train
 from tqdm import tqdm
 
 
 def main():
     max_seq_len = 8
-    early_stop = 3000
+    early_stop = 500
     batch_size = 64
-    tinyshakespeare = get_data(
-        batch_size=batch_size, block_size=max_seq_len, shuffle=True
-    )
-    train_dataloader, test_dataloader = (
-        tinyshakespeare.train_dataloader,
-        tinyshakespeare.test_dataloader,
-    )
 
-    n_dims = tinyshakespeare.vocab_size if tinyshakespeare.vocab_size else 256
-    n_embd = 384  # 384
+    tinyshakespeare = get_tiny_shakespeare()
+    train_dataset, test_dataset, vocab_size, encode, decode = tinyshakespeare
+    key = jax.random.PRNGKey(100)
+    key, subkey = jax.random.split(key)
+    train_dataloader, train_index = make(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        drop_last=True,
+        key=key,
+        jit=True,
+    )
+    test_dataloader, test_index = make(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        drop_last=True,
+        key=subkey,
+    )
+    n_dims = vocab_size
+    n_embd = 64  # 384
     learning_rate = 3e-4
     num_heads = 2  # 6
     query_multihead_dim = num_heads
@@ -32,7 +43,7 @@ def main():
     n_layers = 3  # 6
     max_new_tokens = 200
 
-    kira_model_args = get_transformer_args(
+    kira_model_args = get_kira_args(
         n_dims=n_dims,
         n_embd=n_embd,
         n_layers=n_layers,
@@ -47,23 +58,6 @@ def main():
 
     key = jax.random.PRNGKey(kira_model_args.key_seed)
 
-<<<<<<< Updated upstream
-    # kira = Kira(
-    #     model_args=kira_model_args,
-    #     key=key,
-    # )
-    # key, subkey = jax.random.split(key)
-    # kira = train(
-    #     train_dataloader,
-    #     test_dataloader,
-    #     learning_rate,
-    #     kira,
-    #     early_stop=early_stop,
-    #     key=subkey,
-    #     # wandb_client=wandb,
-    # )
-    #
-=======
     kira = Kira(
         model_args=kira_model_args,
         key=key,
@@ -71,7 +65,7 @@ def main():
     key, subkey = jax.random.split(key)
     kira = train(
         train_dataloader,
-        test_dataloader,
+        train_index,
         learning_rate,
         kira,
         early_stop=early_stop,
@@ -79,32 +73,21 @@ def main():
         # wandb_client=wandb,
     )
 
->>>>>>> Stashed changes
-    # generate_text(
-    #     kira,
-    #     max_seq_len,
-    #     max_new_tokens,
-    #     decode=tinyshakespeare.decode,
-    #     vocab_size=tinyshakespeare.vocab_size,
-    # )
-
     model_args = get_mamba_args(
-        n_embd=n_embd,
-        n_dims=n_dims,
-        n_layers=n_layers,
+        n_embd=n_embd, n_dims=n_dims, n_layers=n_layers, d_state=4
     )
     # wandb.init(
     #     project="mamba",
     #     name="mamba standard",
     #     config=model_args.__dict__,
     # )
-    mamba = Mamba(model_args=model_args, key=key)
-
-    key, subkey = jax.random.split(key)
-
+    # mamba = Mamba(model_args=model_args, key=key)
+    #
+    # key, subkey = jax.random.split(key)
+    #
     # mamba = train(
     #     train_dataloader,
-    #     test_dataloader,
+    #     train_index,
     #     learning_rate,
     #     mamba,
     #     subkey,
@@ -112,32 +95,13 @@ def main():
     #     # wandb_client=wandb,
     # )
 
-    # generate some dummy training data
-    xs = []
-    ys = []
-    key, subkey, subkey2 = jax.random.split(key, 3)
-    for i in range(early_stop):
-        x = jax.random.randint(subkey, (batch_size, max_seq_len), 0, n_dims)
-        y = jax.random.randint(subkey2, (batch_size, max_seq_len), 0, n_dims)
-        xs.append(x)
-        ys.append(y)
-
-    start_time = time.time()
-    mamba = eqx.filter_jit(mamba)
-    for x, y in tqdm(zip(xs, ys)):
-        eqx.filter_vmap(mamba)(x)
-
-    print("", flush=True)
-    print("Training complete.")
-    print(f"Training took {time.time() - start_time} seconds for {early_stop} steps.")
-
-    #generate_text(
-    #    mamba,
-    #    max_seq_len,
-    #    max_new_tokens,
-    #    decode=tinyshakespeare.decode,
-    #    vocab_size=tinyshakespeare.vocab_size,
-    #)
+    generate_text(
+        kira,
+        max_seq_len,
+        max_new_tokens,
+        decode=decode,
+        vocab_size=vocab_size,
+    )
 
 
 if __name__ == "__main__":
