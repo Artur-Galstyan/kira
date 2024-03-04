@@ -63,40 +63,30 @@ def main():
         key=key,
     )
     key, subkey = jax.random.split(key)
-    kira = train(
-        train_dataloader,
-        train_index,
-        learning_rate,
-        kira,
-        early_stop=early_stop,
-        key=subkey,
-        # wandb_client=wandb,
-    )
+    # kira = train(
+    #     train_dataloader,
+    #     train_index,
+    #     learning_rate,
+    #     kira,
+    #     early_stop=early_stop,
+    #     key=subkey,
+    # )
 
     model_args = get_mamba_args(
         n_embd=n_embd, n_dims=n_dims, n_layers=n_layers, d_state=4
     )
-    # wandb.init(
-    #     project="mamba",
-    #     name="mamba standard",
-    #     config=model_args.__dict__,
-    # )
-    # mamba = Mamba(model_args=model_args, key=key)
-    #
-    # key, subkey = jax.random.split(key)
-    #
-    # mamba = train(
-    #     train_dataloader,
-    #     train_index,
-    #     learning_rate,
-    #     mamba,
-    #     subkey,
-    #     early_stop=early_stop,
-    #     # wandb_client=wandb,
-    # )
-
+    mamba = Mamba(model_args=model_args, key=key)
+    key, subkey = jax.random.split(key)
+    mamba = train(
+        train_dataloader,
+        train_index,
+        learning_rate,
+        mamba,
+        subkey,
+        early_stop=early_stop,
+    )
     generate_text(
-        kira,
+        mamba,
         max_seq_len,
         max_new_tokens,
         decode=decode,

@@ -1,5 +1,4 @@
 import functools as ft
-import sys
 from typing import Any, Optional
 
 import equinox as eqx

@@ -16,6 +16,11 @@ class MambaModelArgs:
     bias: bool = False
     max_seq_len: int = 8
     d_inner: int | None = None
+    use_in_projection_bias: bool = True
+    use_conv_bias: bool = True
+    use_out_proj_bias: bool = True
+    ssm_use_delta_proj_bias: bool = False
+    ssm_use_input_proj_bias: bool = False
     key_seed: int = 0
 
     def __post_init__(self):
