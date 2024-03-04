@@ -19,8 +19,6 @@ def train(
     key: PRNGKeyArray,
     early_stop: int | None = None,
     wandb_client: Any | None = None,
-    experiment: int = 7,
-    eval_every: Optional[int] = None,
     log_every: Optional[int] = 100,
 ) -> PyTree:
     optimizer = optax.adamw(learning_rate=learning_rate)
@@ -28,7 +26,7 @@ def train(
     loss_value = 0
     i = 0
     while it := train_dataloader(train_index):
-        x, index, done = it
+        x, train_index, done = it
         if done:
             break
         x, y = jnp.split(x, 2, axis=1)
@@ -39,8 +37,6 @@ def train(
 
         if log_every is not None and i % log_every == 0:
             logger.info(f"Loss: {loss_value}")
-            if wandb_client is not None:
-                wandb_client.log({"train_loss": loss_value})
         if early_stop is not None and i > early_stop:
             break
 
