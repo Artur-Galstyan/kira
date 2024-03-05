@@ -1,7 +1,7 @@
 [project]
 name = "kira_llm"
-version = "0.1.3"
-description = ""
+version = "0.2.0"
+description = "That's right, I'm Kira ✍️"
 license = "MIT"
 readme = "README.md"
 requires-python ="~=3.10"
