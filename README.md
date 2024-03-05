@@ -12,8 +12,8 @@ the [Jaxonloader](https://github.com/Artur-Galstyan/jaxonloader) library.
 ## Available Models
 
 Currently, _Kira_ provides the following models:
-    - `Kira`: A standard transformer, which allows for interpolation between MHA and MQA.
-    - `Mamba`: The new selective state space model
+- `Kira`: A standard transformer, which allows for interpolation between MHA and MQA.
+- `Mamba`: The new selective state space model
 
 _Kira_ can also be used as an encoder. Simply pass `mask=None` when you call _Kira_ 
 and there will be no masking in the MHA (i.e. making it an encoder).
