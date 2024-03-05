@@ -18,8 +18,7 @@ class Block(eqx.nn.StatefulLayer):
 
     model_args: KiraModelArgs = eqx.field(static=True)
 
-    key_rope_embeddings: RotaryPositionalEmbedding
-    query_rope_embeddings: RotaryPositionalEmbedding
+    rope_embeddings: RotaryPositionalEmbedding
 
     def __init__(
         self,
@@ -30,12 +29,8 @@ class Block(eqx.nn.StatefulLayer):
     ):
         self.model_args = model_args
         key, *subkeys = jax.random.split(key, 5)
-        self.query_rope_embeddings = RotaryPositionalEmbedding(
-            embedding_size=model_args.n_embd, max_seq_len=model_args.max_seq_len
-        )
-
-        self.key_rope_embeddings = RotaryPositionalEmbedding(
-            embedding_size=model_args.n_embd, max_seq_len=model_args.max_seq_len
+        self.rope_embeddings = RotaryPositionalEmbedding(
+            embedding_size=model_args.n_embd,
         )
 
         self.mha_attention = MultiheadAttention(
@@ -49,6 +44,7 @@ class Block(eqx.nn.StatefulLayer):
             query_multihead_dim=model_args.num_query_heads,
             kv_multihead_dim=model_args.num_kv_heads,
             state_length=model_args.max_seq_len,
+            kv_interpolation_mode=model_args.kv_interpolation_mode,
             key=subkeys[0],
         )
 
@@ -74,12 +70,10 @@ class Block(eqx.nn.StatefulLayer):
         **kwargs,
     ):
         def process_heads(query_heads, key_heads, value_heads):
-            query_heads = jax.vmap(self.query_rope_embeddings, in_axes=1, out_axes=1)(
+            query_heads = jax.vmap(self.rope_embeddings, in_axes=1, out_axes=1)(
                 query_heads
             )
-            key_heads = jax.vmap(self.key_rope_embeddings, in_axes=1, out_axes=1)(
-                key_heads
-            )
+            key_heads = jax.vmap(self.rope_embeddings, in_axes=1, out_axes=1)(key_heads)
 
             return query_heads, key_heads, value_heads
 

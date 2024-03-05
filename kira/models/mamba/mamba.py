@@ -34,7 +34,7 @@ def selective_scan(
     return ys
 
 
-class SelectiveStateSpaceModel(eqx.Module, strict=True):
+class SelectiveStateSpaceModel(eqx.Module):
     input_proj: eqx.nn.Linear
     delta_proj: eqx.nn.Linear
     A_log: Float[Array, "d_inner d_state"]
@@ -169,7 +169,7 @@ class MambaBlock(eqx.Module):
         return output
 
 
-class ResidualBlock(eqx.Module, strict=True):
+class ResidualBlock(eqx.Module):
     mamba_block: MambaBlock
     rns_norm: eqx.nn.RMSNorm
 
@@ -207,7 +207,7 @@ class ResidualBlock(eqx.Module, strict=True):
         return self.mamba_block(jax.vmap(self.rns_norm)(x)) + x
 
 
-class Mamba(eqx.Module, strict=True):
+class Mamba(eqx.Module):
     model_args: MambaModelArgs = eqx.field(static=True)
 
     layers: eqx.nn.Sequential

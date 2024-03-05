@@ -9,5 +9,7 @@ repos:
     rev: v1.1.351
     hooks:
       - id: pyright
+        exclude: ^main.py$
         additional_dependencies:
           [beartype, jax, jaxtyping, pytest, typing_extensions]
+

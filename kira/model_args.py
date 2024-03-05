@@ -1,5 +1,6 @@
 import math
 from dataclasses import dataclass
+from typing import Literal
 
 
 @dataclass
@@ -49,6 +50,7 @@ class KiraModelArgs:
     depth: int
     key_seed: int
     p: float
+    kv_interpolation_mode: Literal["average", "repeat"]
 
 
 def get_mamba_args(
@@ -92,6 +94,7 @@ def get_kira_args(
     width_size: int,
     depth: int,
     key_seed: int = 0,
+    kv_interpolation_mode: Literal["average", "repeat"] = "average",
     p: float = 0.2,
 ) -> KiraModelArgs:
     return KiraModelArgs(
@@ -106,4 +109,5 @@ def get_kira_args(
         depth=depth,
         p=p,
         key_seed=key_seed,
+        kv_interpolation_mode=kv_interpolation_mode,
     )

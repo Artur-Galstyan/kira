@@ -9,7 +9,26 @@ import jax.lax as lax
 import jax.numpy as jnp
 import jax.random as jrandom
 from equinox.nn import Dropout, Linear, State, StateIndex
-from jaxtyping import Array, Bool, Float, PRNGKeyArray
+from jaxtyping import Array, Bool, Float, PRNGKeyArray, PyTree
+
+
+def standard_attention(
+    query_heads: Float[Array, "q_seq num_heads q_size"],
+    key_heads: Float[Array, "kv_seq num_heads k_size"],
+    value_heads: Float[Array, "kv_seq num_heads v_size"],
+    num_heads: int,
+    mask: Optional[Bool[Array, "q_seq kv_seq"]] = None,
+    dropout: Optional[Dropout] = None,
+    inference: Optional[bool] = None,
+    *,
+    keys: Optional[PRNGKeyArray] = None,
+):
+    attn_fn = ft.partial(dot_product_attention, dropout=dropout, inference=inference)
+    in_axes = (1, 1, 1, 0 if mask is not None and mask.ndim == 3 else None)
+    attn = jax.vmap(attn_fn, in_axes=in_axes, out_axes=1, axis_size=num_heads)(
+        query_heads, key_heads, value_heads, mask, key=keys
+    )
+    return attn
 
 
 def dot_product_attention_weights(
@@ -27,7 +46,7 @@ def dot_product_attention_weights(
                 f"{key.shape[0]}). Got {mask.shape}."
             )
         logits = jnp.where(mask, logits, jnp.finfo(logits.dtype).min)
-
+        assert isinstance(logits, Array)
     return jax.nn.softmax(logits, axis=-1)
 
 
@@ -49,9 +68,9 @@ def dot_product_attention(
 
 
 def vmapped_attention(
-    query_heads: Float[Array, "q_seq qk_size"],
-    key_heads: Float[Array, "kv_seq qk_size"],
-    value_heads: Float[Array, "kv_seq v_size"],
+    query_heads: Float[Array, "seq_length query_multihead_dim qk_size"],
+    key_heads: Float[Array, "seq_length qk_size"],
+    value_heads: Float[Array, "seq_length v_size"],
     dropout: Optional[Dropout] = None,
     inference: Optional[bool] = None,
     mask: Optional[Float[Array, "q_seq kv_seq"]] = None,
@@ -60,7 +79,6 @@ def vmapped_attention(
     attn_fn = ft.partial(
         dot_product_attention, dropout=dropout, inference=inference, key=keys, mask=mask
     )
-    # Batch `keys` down its first axis as it is passed as a keyword argument.
     dpa = jax.vmap(
         lambda q, k, v: attn_fn(q, k, v),
         in_axes=(1, None, None),
@@ -70,88 +88,6 @@ def vmapped_attention(
 
 
 class MultiheadAttention(eqx.Module):
-    r"""Computes multi-head or multi-query attention. Also supports autoregressive
-    decoding.
-
-    !!! tip
-
-        See [`equinox.nn.self_attention`][] for a convenience wrapper if you get lost in
-        the following very general discussion!
-
-    Computes
-
-    $$\text{MultiheadAttention}(Q, K, V)
-      = \sum_i \text{Attention}\left(QW^Q_i, KW^K_i, VW^V_i\right)W^O_i$$
-
-    where:
-
-    - The inputs are
-      $Q \in \mathbb{R}^{d_\text{seq} \times d_\text{query}}$,
-      $K \in \mathbb{R}^{d_\text{seq} \times d_\text{key}}$,
-      $V \in \mathbb{R}^{d_\text{seq} \times d_\text{value}}$.
-      These are referred to as query, key, and value respectively. Meanwhile
-      $d_\text{seq}$ is the sequence length, and $d_\text{query}$, $d_\text{key}$,
-      $d_\text{value}$ are numbers of channels.
-
-    - The trainable weights are
-    $W^Q_i \in \mathbb{R}^{d_\text{query} \times d_\text{qk}}$,
-    $W^K_i \in \mathbb{R}^{d_\text{key} \times d_\text{qk}}$,
-    $W^V_i \in \mathbb{R}^{d_\text{value} \times d_\text{vo}}$,
-    $W^O_i \in \mathbb{R}^{d_\text{vo} \times d_\text{output}}$,
-    with $i \in \{1, \ldots, h\}$, where $h$ is the number of heads, and $d_\text{qk}$,
-    $d_\text{vo}$, $d_\text{output}$ are hyperparameters.
-
-    - $\text{Attention}$ is defined as
-      $\text{Attention}(\widetilde{Q}, \widetilde{K}, \widetilde{V})
-       = \text{softmax}(\frac{\widetilde{Q}\widetilde{K}^\intercal}
-                             {\sqrt{d_\text{qk}}})\widetilde{V}$.
-
-    One common variant is multi-query attention, in which $W^K_i$ are the same for all
-    $i$, and $W^V_i$ are the same for all $i$. This can help when limited by memory
-    bandwidth.
-
-    ??? cite
-
-        [Attention is All You Need](https://arxiv.org/abs/1706.03762)
-        ```bibtex
-        @inproceedings{vaswani2017attention,
-            author={Vaswani, Ashish and Shazeer, Noam and Parmar, Niki and
-                    Uszkoreit, Jakob and Jones, Llion and Gomez, Aidan N and
-                    Kaiser, {\L}ukasz and Polosukhin, Illia},
-            booktitle={Advances in Neural Information Processing Systems},
-            publisher={Curran Associates, Inc.},
-            title={Attention is All You Need},
-            volume={30},
-            year={2017}
-        }
-        ```
-
-        Multi-query attention is from [Fast Transformer Decoding: One Write-Head is
-        All You Need](https://arxiv.org/abs/1911.02150)
-        ```bibtex
-        @article{
-            author={Noam Shazeer},
-            title={Fast Transformer Decoding: One Write-Head is All You Need},
-            year={2019},
-            journal={arXiv:1911.02150},
-        }
-        ```
-
-    !!! faq "FAQ"
-
-        Different software libraries often implement multihead attention in slightly
-        different ways. Some of them will or won't add on biases by default. Most of
-        them will fix the values of $d_\text{qk}, d_\text{vo}, d_\text{output}$ in
-        terms of $d_\text{query}$ or $d_\text{key}$ or $d_\text{value}$. Equinox
-        chooses to expose all of these as options.
-
-        Relative to the original
-        [Attention is All You Need](https://arxiv.org/abs/1706.03762) paper: our
-        $d_\text{qk}$ is their "$d_k$". Our $d_\text{vo}$ is their "$d_\text{v}$". They
-        fix $d_\text{query} = d_\text{key} = d_\text{value} = d_\text{output}$ and
-        refer to it as "$d_\text{model}$".
-    """
-
     query_proj: Linear
     key_proj: Linear
     value_proj: Linear
@@ -176,6 +112,8 @@ class MultiheadAttention(eqx.Module):
     query_multihead_dim: int = eqx.field(static=True)
     kv_multihead_dim: int = eqx.field(static=True)
 
+    kv_interpolation_mode: Literal["average", "repeat"] = eqx.field(static=True)
+
     def __init__(
         self,
         num_heads: int,
@@ -195,65 +133,10 @@ class MultiheadAttention(eqx.Module):
         use_output_bias: bool = False,
         dropout_p: float = 0.0,
         inference: bool = False,
+        kv_interpolation_mode: Literal["average", "repeat"] = "average",
         key: PRNGKeyArray,
         **kwargs,
     ):
-        r"""**Arguments:**
-
-        - `num_heads`: Number of parallel attention heads $h$.
-        - `query_size`: Number of input channels for query $Q$.
-
-        **Keyword-only arguments:**
-
-        - `key_size`: Number of input channels for key $K$. Defaults to `query_size`.
-        - `value_size`: Number of input channels for value $V$. Defaults to
-            `query_size`.
-        - `output_size`: Number of output channels. Defaults to `query_size`.
-
-        - `state_length`: Used when autoregressively decoding. This is the size of the
-            key and value buffers that are updated each time the module is called.
-
-        - `qk_size`: Number of channels to compare query and key over, per head.
-            Defaults to `query_size // num_heads`.
-        - `vo_size`: Number of channels to compare attention-weighted value and output
-            over, per head. Defaults to `query_size // num_heads`.
-
-        - `use_query_bias`: Whether to use a bias term in the query projections.
-        - `use_key_bias`: Whether to use a bias term in the key projections.
-        - `use_value_bias`: Whether to use a bias term in the value projections.
-        - `use_output_bias`: Whether to use a bias term in the output projection.
-
-        - `dropout_p`: Dropout probability on attention weights.
-
-        - `inference`: Whether to actually apply dropout at all. If `True` then dropout
-            is not applied. If `False` then dropout is applied. This may be toggled
-            with [`equinox.tree_inference`][] or overridden during
-            [`equinox.nn.MultiheadAttention.__call__`][].
-
-        - `key`: A `jax.random.PRNGKeyArray` used to provide randomness for parameter
-            initialisation.
-
-        !!! tip "Common variants"
-
-            Gosh, that's rather a lot of arguments. Here's how to set up some common
-            versions of attention.
-
-            If you're not performing self-attention, and have differingly-sized
-            query/key/value, then you'll need to specify `key_size` and `value_size`.
-
-            If you want to perform multi-query attention, then this can be done by
-            passing `key_multihead=False` and `value_multihead=False`.
-
-            If you want to perform autoregressive decoding, then you'll need to specify
-            `state_length`, and must pass in the `state` argument at call-time. This
-            will append the new key and value to those currently seen, up to the maximum
-            length of `state_length`. Unlike some attention implementations, you may
-            pass in arbitrarily many key and value tokens in one go (not just one at a
-            time). This means for example that you can use the same code between
-            non-autoregressive training and autoregressive inference: in training, just
-            pass in the full key/value, and then just discard the updated state.
-        """
-        super().__init__(**kwargs)
         qkey, kkey, vkey, okey = jrandom.split(key, 4)
 
         if key_size is None:
@@ -329,6 +212,7 @@ class MultiheadAttention(eqx.Module):
         self.state_length = state_length
         self.kv_multihead_dim = kv_multihead_dim
         self.query_multihead_dim = query_multihead_dim
+        self.kv_interpolation_mode = kv_interpolation_mode
 
     @overload
     def __call__(
@@ -402,52 +286,20 @@ class MultiheadAttention(eqx.Module):
         process_heads: Optional[
             Callable[
                 [
-                    Float[Array, "query_size num_heads qk_size"],
-                    Float[Array, "key_size num_heads qk_size"],
-                    Float[Array, "value_size num_heads vo_size"],
+                    Float[Array, "seq_length num_heads qk_size"],
+                    Float[Array, "seq_length num_heads qk_size"],
+                    Float[Array, "seq_length num_heads vo_size"],
                 ],
                 Tuple[
-                    Float[Array, "query_size num_heads qk_size"],
-                    Float[Array, "key_size num_heads qk_size"],
-                    Float[Array, "value_size num_heads vo_size"],
+                    Float[Array, "seq_length num_heads qk_size"],
+                    Float[Array, "seq_length num_heads qk_size"],
+                    Float[Array, "seq_length num_heads vo_size"],
                 ],
             ]
         ] = None,
     ) -> Union[
         Float[Array, "q_seq o_size"], Tuple[Float[Array, "q_seq o_size"], State]
     ]:
-        """**Arguments:**
-
-        - `query`: Query embedding. Should be a JAX array of shape
-            `(query_seq_length, query_size)`.
-        - `key_`: Key embedding. Should be a JAX array of shape
-            `(kv_seq_length, key_size)`.
-        - `value`: Value embedding. Should be a JAX array of shape
-            `(kv_seq_length, value_size)`.
-        - `mask`: Optional mask preventing attention to certain positions. Should either
-            be:
-            - a JAX array of shape `(query_seq_length, kv_seq_length)`;
-            - a JAX array of shape `(num_heads, query_seq_length, kv_seq_length)` (for
-                custom per-head masking);
-            - the string `"causal"`, to automatically build a causal attention mask.
-        - `state`: Optional state for the keys and values. If passed then `key_` and
-            `value` will be appended to all currently seen keys and values before
-            performing attention. This is commonly known as autoregressive decoding.
-            This should typically be used in conjunction with `mask="causal"`.
-        - `key`: A `jax.random.PRNGKeyArray` used for dropout. Unused if `dropout = 0`.
-            (Keyword only argument.)
-        - `inference`: As [`equinox.nn.Dropout.__call__`][]. (Keyword only
-            argument.)
-        - `deterministic`: (Deprecated in favour of `inference`.)
-
-        **Returns:**
-
-        The output is a JAX array of shape `(query_seq_length, output_size)`.
-
-        If `state` is not passed then just this output is returned. If `state` is passed
-        then a 2-tuple of `(output, updated_state)` is returned.
-        """
-
         if deterministic is not None:
             inference = deterministic
             warnings.warn(
@@ -463,11 +315,9 @@ class MultiheadAttention(eqx.Module):
             raise ValueError("key and value must both be sequences of equal length.")
         del kv_seq_length2
 
-        query_heads = self._new_project(
-            self.query_proj, self.query_multihead_dim, query
-        )
-        key_heads = self._new_project(self.key_proj, self.kv_multihead_dim, key_)
-        value_heads = self._new_project(self.value_proj, self.kv_multihead_dim, value)
+        query_heads = self._project(self.query_proj, self.query_multihead_dim, query)
+        key_heads = self._project(self.key_proj, self.kv_multihead_dim, key_)
+        value_heads = self._project(self.value_proj, self.kv_multihead_dim, value)
 
         if process_heads is not None:
             q_shape, k_shape, v_shape = (
@@ -527,28 +377,56 @@ class MultiheadAttention(eqx.Module):
             and self.kv_multihead_dim == self.num_heads
         ):
             # Normal multi-head attention
-            attn_fn = ft.partial(
-                dot_product_attention, dropout=self.dropout, inference=inference
-            )
-            in_axes = (1, 1, 1, 0 if mask is not None and mask.ndim == 3 else None)
-            attn = jax.vmap(
-                attn_fn, in_axes=in_axes, out_axes=1, axis_size=self.num_heads
-            )(query_heads, key_heads, value_heads, mask, key=keys)
-        else:
-            pt_vmapped_attention = ft.partial(
-                vmapped_attention,
-                dropout=self.dropout,
-                inference=inference,
-                mask=mask,
+            attn = standard_attention(
+                query_heads,
+                key_heads,
+                value_heads,
+                self.num_heads,
+                mask,
+                self.dropout,
+                inference,
                 keys=keys,
             )
-            attn = jax.vmap(pt_vmapped_attention, in_axes=(None, 1, 1), out_axes=1)(
-                query_heads, key_heads, value_heads
-            )
+        else:
+            if self.kv_interpolation_mode == "average":
+                # use double vmap to compute multihead attention
+                pt_vmapped_attention = ft.partial(
+                    vmapped_attention,
+                    dropout=self.dropout,
+                    inference=inference,
+                    mask=mask,
+                    keys=keys,
+                )
+                attn = jax.vmap(pt_vmapped_attention, in_axes=(None, 1, 1), out_axes=1)(
+                    query_heads, key_heads, value_heads
+                )
 
-            attn = jnp.sum(attn, axis=1)
-            # Taking the mean over the d dimension
-            attn = attn / self.kv_multihead_dim
+                attn = jnp.sum(attn, axis=1)
+                # Taking the mean over the d dimension
+                attn = attn / self.kv_multihead_dim
+            else:
+                # repeat kv head dims until they match query head dims
+                # then use normal multihead attention
+                if self.query_multihead_dim % self.num_heads != 0:
+                    raise ValueError(
+                        "query_multihead_dim must be divisible by num_heads"
+                        + " when using kv_interpolation_mode='repeat'"
+                        + f" but {(self.query_multihead_dim % self.kv_multihead_dim)=}"
+                    )
+                n_repeats = self.query_multihead_dim // self.kv_multihead_dim
+                repeated_key_heads = jnp.repeat(key_heads, n_repeats, axis=1)
+                repeated_value_heads = jnp.repeat(value_heads, n_repeats, axis=1)
+                # proceed with normal multihead attention
+                attn = standard_attention(
+                    query_heads,
+                    repeated_key_heads,
+                    repeated_value_heads,
+                    self.num_heads,
+                    mask,
+                    self.dropout,
+                    inference,
+                    keys=keys,
+                )
 
         attn = attn.reshape(query_seq_length, self.num_heads * self.vo_size)
         out = jax.vmap(self.output_proj)(attn)
@@ -558,16 +436,7 @@ class MultiheadAttention(eqx.Module):
         else:
             return out, state
 
-    def _project(self, proj, multihead, x):
-        seq_length, _ = x.shape
-        projection = jax.vmap(proj)(x)
-        if multihead:
-            _, projection_size = projection.shape
-            size_per_head = projection_size // self.num_heads
-            projection = projection.reshape(seq_length, self.num_heads, size_per_head)
-        return projection
-
-    def _new_project(self, proj: eqx.Module, multihead: int | None, x: Array) -> Array:
+    def _project(self, proj: PyTree, multihead: int | None, x: Array) -> Array:
         seq_length, _ = x.shape
         projection = jax.vmap(proj)(x)
 
