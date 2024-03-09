@@ -230,8 +230,7 @@ class MultiheadAttention(eqx.Module):
         key: Optional[PRNGKeyArray] = None,
         inference: Optional[bool] = None,
         deterministic: Optional[bool] = None,
-    ) -> Float[Array, "q_seq o_size"]:
-        ...
+    ) -> Float[Array, "q_seq o_size"]: ...
 
     @overload
     def __call__(
@@ -250,8 +249,7 @@ class MultiheadAttention(eqx.Module):
         key: Optional[PRNGKeyArray] = None,
         inference: Optional[bool] = None,
         deterministic: Optional[bool] = None,
-    ) -> Tuple[Float[Array, "q_seq o_size"], State]:
-        ...
+    ) -> Tuple[Float[Array, "q_seq o_size"], State]: ...
 
     @overload
     def __call__(
@@ -264,8 +262,7 @@ class MultiheadAttention(eqx.Module):
         key: Optional[PRNGKeyArray] = None,
         inference: Optional[bool] = None,
         deterministic: Optional[bool] = None,
-    ) -> Tuple[Float[Array, "q_seq o_size"], State]:
-        ...
+    ) -> Tuple[Float[Array, "q_seq o_size"], State]: ...
 
     def __call__(
         self,

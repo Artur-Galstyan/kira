@@ -83,3 +83,19 @@ class RotaryPositionalEmbedding(eqx.Module):
         rotate_x = self.rotate_half(x)
         x_rope = (x * freqs_real) + (rotate_x * freqs_imag)
         return x_rope
+
+
+def process_heads(
+    rope_embeddings: RotaryPositionalEmbedding,
+    query_heads: Float[Array, "seq_length num_heads qk_size"],
+    key_heads: Float[Array, "seq_length num_heads qk_size"],
+    value_heads: Float[Array, "seq_length num_heads vo_size"],
+) -> tuple[
+    Float[Array, "seq_length num_heads qk_size"],
+    Float[Array, "seq_length num_heads qk_size"],
+    Float[Array, "seq_length num_heads vo_size"],
+]:
+    query_heads = jax.vmap(rope_embeddings, in_axes=1, out_axes=1)(query_heads)
+    key_heads = jax.vmap(rope_embeddings, in_axes=1, out_axes=1)(key_heads)
+
+    return query_heads, key_heads, value_heads

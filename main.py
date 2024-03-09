@@ -39,19 +39,30 @@ def main():
     n_layers = 3  # 6
     max_new_tokens = 200  # noqa
 
-    train_kira(
+    # train_kira(
+    #     train_dataloader,
+    #     train_index,
+    #     n_dims,
+    #     n_embd,
+    #     n_layers,
+    #     max_seq_len,
+    #     num_heads,
+    #     query_multihead_dim,
+    #     kv_multihead_dim,
+    #     learning_rate,
+    #     early_stop,
+    #     kv_interpolation_mode="repeat",
+    # )
+
+    train_mamba(
         train_dataloader,
         train_index,
         n_dims,
         n_embd,
         n_layers,
-        max_seq_len,
-        num_heads,
-        query_multihead_dim,
-        kv_multihead_dim,
         learning_rate,
         early_stop,
-        kv_interpolation_mode="repeat",
+        key,
     )
 
 
