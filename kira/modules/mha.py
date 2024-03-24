@@ -1,7 +1,7 @@
 import functools as ft
 import math
 import warnings
-from typing import Callable, Literal, Optional, overload, Tuple, Union
+from typing import Callable, Literal, Optional, Tuple, Union
 
 import equinox as eqx
 import jax
@@ -214,56 +214,6 @@ class MultiheadAttention(eqx.Module):
         self.query_multihead_dim = query_multihead_dim
         self.kv_interpolation_mode = kv_interpolation_mode
 
-    @overload
-    def __call__(
-        self,
-        query: Float[Array, "q_seq q_size"],
-        key_: Float[Array, "kv_seq k_size"],
-        value: Float[Array, "kv_seq v_size"],
-        mask: Union[
-            None,
-            Bool[Array, "q_seq kv_seq"],
-            Bool[Array, "num_heads q_seq kv_seq"],
-            Literal["causal"],
-        ] = None,
-        *,
-        key: Optional[PRNGKeyArray] = None,
-        inference: Optional[bool] = None,
-        deterministic: Optional[bool] = None,
-    ) -> Float[Array, "q_seq o_size"]: ...
-
-    @overload
-    def __call__(
-        self,
-        query: Float[Array, "q_seq q_size"],
-        key_: Float[Array, "kv_seq k_size"],
-        value: Float[Array, "kv_seq v_size"],
-        mask: Union[
-            None,
-            Bool[Array, "q_seq kv_seq"],
-            Bool[Array, "num_heads q_seq kv_seq"],
-            Literal["causal"],
-        ],
-        state: State,
-        *,
-        key: Optional[PRNGKeyArray] = None,
-        inference: Optional[bool] = None,
-        deterministic: Optional[bool] = None,
-    ) -> Tuple[Float[Array, "q_seq o_size"], State]: ...
-
-    @overload
-    def __call__(
-        self,
-        query: Float[Array, "q_seq q_size"],
-        key_: Float[Array, "kv_seq k_size"],
-        value: Float[Array, "kv_seq v_size"],
-        *,
-        state: State,
-        key: Optional[PRNGKeyArray] = None,
-        inference: Optional[bool] = None,
-        deterministic: Optional[bool] = None,
-    ) -> Tuple[Float[Array, "q_seq o_size"], State]: ...
-
     def __call__(
         self,
         query: Float[Array, "q_seq q_size"],
@@ -339,9 +289,22 @@ class MultiheadAttention(eqx.Module):
             causal_mask_offset = 0
         else:
             key_state, value_state, index = state.get(self.autoregressive_index)
+            key_seq_length = key_heads.shape[0]
+            if index + key_seq_length > self.state_length:
+                key_shift = index + key_seq_length - self.state_length
+                key_shift = min(key_shift, key_seq_length)
+                key_state = jnp.roll(key_state, -key_shift, axis=0)
+
             key_state = lax.dynamic_update_slice_in_dim(
                 key_state, key_heads, index, axis=0
             )
+
+            value_seq_length = value_heads.shape[0]
+            if index + value_seq_length > self.state_length:
+                value_shift = index + value_seq_length - self.state_length
+                value_shift = min(value_shift, value_seq_length)
+                value_state = jnp.roll(value_state, -value_shift, axis=0)
+
             value_state = lax.dynamic_update_slice_in_dim(
                 value_state, value_heads, index, axis=0
             )

@@ -3,6 +3,7 @@ from typing import Literal
 import jax
 from jaxonloader import get_tiny_shakespeare, make
 from kira import Kira, Mamba
+from kira.generate import generate_text
 from kira.model_args import get_kira_args, get_mamba_args
 from kira.train import train
 
@@ -39,31 +40,33 @@ def main():
     n_layers = 3  # 6
     max_new_tokens = 200  # noqa
 
-    # train_kira(
-    #     train_dataloader,
-    #     train_index,
-    #     n_dims,
-    #     n_embd,
-    #     n_layers,
-    #     max_seq_len,
-    #     num_heads,
-    #     query_multihead_dim,
-    #     kv_multihead_dim,
-    #     learning_rate,
-    #     early_stop,
-    #     kv_interpolation_mode="repeat",
-    # )
-
-    train_mamba(
+    kira = train_kira(
         train_dataloader,
         train_index,
         n_dims,
         n_embd,
         n_layers,
+        max_seq_len,
+        num_heads,
+        query_multihead_dim,
+        kv_multihead_dim,
         learning_rate,
         early_stop,
-        key,
+        kv_interpolation_mode="repeat",
     )
+
+    # train_mamba(
+    #     train_dataloader,
+    #     train_index,
+    #     n_dims,
+    #     n_embd,
+    #     n_layers,
+    #     learning_rate,
+    #     early_stop,
+    #     key,
+    # )
+
+    generate_text(kira, max_seq_len, 200, decode, vocab_size)
 
 
 def train_mamba(
